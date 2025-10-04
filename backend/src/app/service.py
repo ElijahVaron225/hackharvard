@@ -8,6 +8,7 @@ from typing import Optional
 from .kiri_client import kiri_client
 from .store import job_store
 from .models import JobStatus
+from .core.config import settings
 from .utils import (
     ExponentialBackoff, 
     download_file, 
@@ -128,18 +129,24 @@ async def process_job_completion(job_id: str, kiri_serialize: str) -> None:
         job_store.update_job_status(job_id, JobStatus.FAILED, error=error_msg)
 
 
-async def poll_job_status(job_id: str, kiri_serialize: str, timeout_minutes: int = 45) -> None:
+async def poll_job_status(job_id: str, kiri_serialize: str, timeout_minutes: int = None) -> None:
     """
     Poll Kiri Engine for job status with exponential backoff.
     
     Args:
         job_id: Job identifier
         kiri_serialize: Kiri Engine serialize parameter
-        timeout_minutes: Maximum time to poll in minutes
+        timeout_minutes: Maximum time to poll in minutes (uses config default if None)
     """
     logger.info(f"Starting polling for job {job_id}")
     
-    backoff = ExponentialBackoff(initial_delay=2.0, max_delay=30.0)
+    # Use configuration values
+    timeout_minutes = timeout_minutes or settings.POLLING_TIMEOUT_MINUTES
+    backoff = ExponentialBackoff(
+        initial_delay=settings.POLLING_INITIAL_DELAY,
+        max_delay=settings.POLLING_MAX_DELAY,
+        stable_delay=settings.POLLING_STABLE_DELAY
+    )
     start_time = time.time()
     timeout_seconds = timeout_minutes * 60
     
