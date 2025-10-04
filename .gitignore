@@ -2,3 +2,10 @@
 # Xcode noise
 *.xcuserstate
 .DS_Store
+# Xcode build products
+build/
+DerivedData/
+
+# Xcode user-specific data
+*.xcuserdatad/
+*.xcscmblueprint
