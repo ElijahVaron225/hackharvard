@@ -1,15 +1,24 @@
 import SwiftUI
-import Auth
 
 struct LandingPageView: View {
+    @State private var showLogin = false
+    @State private var showSignUp = false
+    
     var body: some View {
         VStack {
             Button("Login") {
-                LoginView()
+                showLogin = true
             }
+            
             Button("Sign Up") {
-                SignUpView()
+                showSignUp = true
             }
+        }
+        .sheet(isPresented: $showLogin) {
+            LoginView()
+        }
+        .sheet(isPresented: $showSignUp) {
+            SignUpView()
         }
     }
 }

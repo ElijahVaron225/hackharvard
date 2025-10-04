@@ -10,6 +10,30 @@ extension Date {
     }
 }
 
+// Add this enum somewhere in your Auth file
+enum AuthError: LocalizedError {
+    case invalidCredentials
+    case userAlreadyExists
+    case weakPassword
+    case signUpFailed(String)
+    case networkError(String)
+    
+    var errorDescription: String? {
+        switch self {
+        case .invalidCredentials:
+            return "Invalid email or password format"
+        case .userAlreadyExists:
+            return "An account with this email already exists"
+        case .weakPassword:
+            return "Password is too weak. Use at least 8 characters"
+        case .signUpFailed(let message):
+            return "Sign up failed: \(message)"
+        case .networkError(let message):
+            return "Network error: \(message)"
+        }
+    }
+}
+
 
 // User Type (public table row)
 struct User: Codable {
@@ -26,7 +50,7 @@ class Auth {
 
     init(
         supabaseURL: String = "https://ygrolpbmsuhcslizztvy.supabase.co",
-        supabaseKey: String = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlncm9scGJtc3VoY3NsaXp6dHZ5Iiwicm9zZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTU0NTg1NSwiZXhwIjoyMDc1MTIxODU1fQ.dlmV6q2obd9JIRFX7lzB9s49HrJP0v0I9SzITB2KitI"
+        supabaseKey: String = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlncm9scGJtc3VoY3NsaXp6dHZ5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTU0NTg1NSwiZXhwIjoyMDc1MTIxODU1fQ.dlmV6q2obd9JIRFX7lzB9s49HrJP0v0I9SzITB2KitI"
     ) {
         self.supabase = SupabaseClient(
             supabaseURL: URL(string: supabaseURL)!,
@@ -49,38 +73,59 @@ class Auth {
             .single()
             .execute()
             .value                                           // return single row [web:115]
-
+        
+        print(fetched)
         self.user = fetched
     }
 
     // Sign up with credentials passed via the given user.email and an extra password parameter.
     // Variable names stay the same by overloading on argument label.
     func signUp(user: User, password: String) async throws {
-        // Create auth user
-        let response = try await supabase.auth.signUp(email: user.email, password: password) // [web:102]
-        print(response)
+        do {
+            // Create auth user
+            let response = try await supabase.auth.signUp(email: user.email, password: password)
+            print(response)
 
-        // Mirror into public.users (id must equal auth user's id)
-        let authUserId = response.user.id.uuidString
-        let profile = User(
-            id: authUserId,
-            username: user.username,
-            email: user.email,
-            created_at: Date().iso8601StringUTC
-        )
+            // Mirror into public.users (id must equal auth user's id)
+            let authUserId = response.user.id.uuidString
+            let profile = User(
+                id: authUserId,
+                username: user.username,
+                email: user.email,
+                created_at: Date().iso8601StringUTC
+            )
 
-        // Insert and return inserted row
-        let inserted: User = try await supabase
-            .from("users")
-            .insert(profile)
-            .select()
-            .single()
-            .execute()
-            .value                                          // select() to get data back [web:115][web:107]
+            // Insert and return inserted row
+            let inserted: User = try await supabase
+                .from("users")
+                .insert(profile)
+                .select()
+                .single()
+                .execute()
+                .value
 
-        self.user = inserted
+            self.user = inserted
+            
+        } catch let error as NSError {
+            // Handle specific Supabase errors
+            if error.domain == "supabase" {
+                switch error.code {
+                case 400:
+                    throw AuthError.invalidCredentials
+                case 409:
+                    throw AuthError.userAlreadyExists
+                case 422:
+                    throw AuthError.weakPassword
+                default:
+                    throw AuthError.signUpFailed(error.localizedDescription)
+                }
+            } else {
+                // Network or other errors
+                throw AuthError.networkError(error.localizedDescription)
+            }
+        }
     }
-
+    
     func signOut() async throws {
         try await supabase.auth.signOut()                   // ends session [web:99]
         self.user = nil
