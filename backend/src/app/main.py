@@ -4,7 +4,7 @@ import os
 from typing import Literal
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.app.api.v1.router import api_router
+from app.api.v1.router import api_router
 
 APP_NAME = os.getenv("APP_NAME", "FastAPI Minimal")
 API_V1_PREFIX = os.getenv("API_V1_PREFIX", "/api/v1")

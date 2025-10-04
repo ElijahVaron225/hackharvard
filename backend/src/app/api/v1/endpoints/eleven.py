@@ -1,6 +1,6 @@
 import fastapi
 from fastapi.responses import StreamingResponse
-from src.app.utils.elevenlabs import get_elevenlabs_client
+from app.utils.elevenlabs import get_elevenlabs_client
 from pydantic import BaseModel, Field
 import io
 
@@ -19,14 +19,18 @@ def text_to_speech(request: TextToSpeechRequest):
     client = get_elevenlabs_client()
     
     try:
-        response = client.text_to_speech.convert(
+        # Use the correct ElevenLabs API method for v2.16.0
+        audio_generator = client.text_to_speech.convert(
             text=request.text,
             voice_id=request.voice_id,
-            output_format=request.output_format
+            model_id="eleven_multilingual_v2"
         )
         
+        # Convert generator to bytes
+        audio_bytes = b"".join(audio_generator)
+        
         # Return the audio as a streaming response
-        audio_stream = io.BytesIO(response.audio)
+        audio_stream = io.BytesIO(audio_bytes)
         return StreamingResponse(
             audio_stream,
             media_type="audio/mpeg",

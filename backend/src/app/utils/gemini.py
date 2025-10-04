@@ -1,5 +1,5 @@
 # Create a function to return the gemini client
-from src.app.core.config import settings
+from app.core.config import settings
 from google import genai
 
 def get_gemini_client() -> genai.Client:
