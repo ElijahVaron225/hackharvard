@@ -1,6 +1,6 @@
 import os
 import httpx
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, HTTPException
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
@@ -15,7 +15,7 @@ BLOCKADE_API_KEY = os.getenv("BLOCKADE_API_KEY")
 class SkyboxRequest(BaseModel):
     prompt: str
 
-@router.get("/skybox")
+@router.get("/")
 def get_skybox():
     return {"status": "ok"}
 
@@ -29,13 +29,11 @@ async def generate_skybox(request: SkyboxRequest):
     
     url = "https://backend.blockadelabs.com/api/v1/skybox"
 
-
     headers = {
         "x-api-key": BLOCKADE_API_KEY,
         "Content-Type": "application/json"
     }
     
- 
     payload = {
         "prompt": request.prompt
     }
