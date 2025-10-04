@@ -2,8 +2,22 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from app.api.v1.endpoints.skybox import generate_skybox
+from app.api.v1.endpoints.gemini import chat_with_gemini
 
 router = APIRouter(prefix="/prompts", tags=["prompts"])
+
+
+
+@router.post("/workflow", tags=["workflow"])
+async def workflow(request):
+    try:
+        prompt = chat_with_gemini(request)
+        send_prompt = await send_prompt(prompt)
+        return send_prompt
+    except Exception as e:
+        print(f"💥 Error in workflow: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
 
 class SendPromptRequest(BaseModel):
     prompt: str = Field(..., min_length=1)
