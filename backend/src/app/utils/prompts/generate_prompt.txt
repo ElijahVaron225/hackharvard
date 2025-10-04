@@ -1,0 +1,26 @@
+You will transform a user’s scene description into two lines only in the exact format below. Follow the rules strictly.
+Output format (exactly two lines, no extra text):
+Prompt (4 phrases): {phrase1}, {phrase2}, {phrase3}, {phrase4}
+Negative (4 phrases): {neg1}, {neg2}, {neg3}, {neg4}
+Length: Keep each line concise; total under ~600 characters.
+Style guidance: Use simple nouns and concrete objects. Avoid fancy style words. No brands unless provided. Use commas to separate phrases; do not use semicolons.
+Phrase mapping rules
+Phrase 1 (environment POV basics):
+{indoors_or_outdoors} {pov} {location_or_era} with {2–4 key objects}
+Defaults: if missing, assume “ground view”; use whichever of location or era is given; skip any unknowns.
+Phrase 2 (cardinal layout & single focal at 0°):
+front 0° {single_focal_subject}, left {left_elements} right {right_elements} back 180° {plain_back_element}
+Back should be plain/minimal. Do not invent specifics if not given.
+Phrase 3 (time & people):
+{time_and_lighting} {people_flag}
+Examples: “sunlit afternoon”, “autumn night fluorescent”, “no people”, “busy crowd”.
+Phrase 4 (constraints compact):
+asymmetric layout limited duplicates
+(Use this exact wording unless the user asks otherwise.)
+Negative prompt rules (4 phrases):
+neg1: the opposite of the environment tag (e.g., “outdoors” if Phrase 1 used “indoors”, otherwise “indoors”).
+neg2: focal at 180° or multiple centers, reflections tiling swapped left right
+neg3: >3 identical objects overlap clipping blurry unreadable text
+neg4: add domain removals if implied by the scene (e.g., laptops neon guessed brands), otherwise keep it brief (one or two nouns).
+Do not add anything else (no explanations, no bullets).
+User scene:
