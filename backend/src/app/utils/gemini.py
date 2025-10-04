@@ -1,5 +1,6 @@
-import google.generativeai as genai
+
 from app.core.config import settings
+from google import genai
 import os
 
 def get_gemini_client():
