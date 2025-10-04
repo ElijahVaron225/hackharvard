@@ -4,7 +4,7 @@ import SwiftUI
 struct CulturedApp: App {
     var body: some Scene {
         WindowGroup {
-            TestView()
+            ContentView()
         }
     }
 }
