@@ -1,7 +1,14 @@
 from fastapi import APIRouter
-from .endpoints import health, gemini, eleven
+from app.api.v1.endpoints.eleven import router as eleven_router
+from app.api.v1.endpoints.gemini import router as gemini_router
+from app.api.v1.endpoints.health import router as health_router
+from app.api.v1.endpoints.skybox import router as skybox_router
 
-api_router = APIRouter()
-api_router.include_router(health.router, tags=["health"])
-api_router.include_router(gemini.router, tags=["gemini"])
-api_router.include_router(eleven.router, tags=["elevenlabs"])
+router = APIRouter()
+router.include_router(health_router, prefix="/health", tags=["health"])
+router.include_router(eleven_router, prefix="/eleven", tags=["eleven"])
+router.include_router(gemini_router, prefix="/gemini", tags=["gemini"])
+router.include_router(skybox_router, prefix="/skybox", tags=["skybox"])
+
+
+

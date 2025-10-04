@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import os
-from typing import Literal
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1.router import api_router
+from app.api.v1.router import router as v1_router
 
 APP_NAME = os.getenv("APP_NAME", "FastAPI Minimal")
 API_V1_PREFIX = os.getenv("API_V1_PREFIX", "/api/v1")
@@ -26,12 +25,8 @@ def create_app() -> FastAPI:
             allow_headers=["*"],
         )
 
-    @app.get(f"{API_V1_PREFIX}/healthz")
-    def healthz() -> dict[Literal["status"], Literal["ok"]]:
-        return {"status": "ok"}
-
-    # Include API router
-    app.include_router(api_router, prefix=API_V1_PREFIX)
+    # Include the API router
+    app.include_router(v1_router, prefix=API_V1_PREFIX)
 
     return app
 

@@ -1,0 +1,17 @@
+[project]
+name = "app"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src"]
+extend-select = ["I", "TID252"]  # I=import sort, TID252=ban relative imports
+fix = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
