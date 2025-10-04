@@ -1,6 +1,5 @@
 import SwiftUI
 import Auth
-import Views
 
 struct LandingPageView: View {
     var body: some View {

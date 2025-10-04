@@ -2,7 +2,6 @@ import SwiftUI
 import Auth
 
 struct SignUpView: View {
-    @Binding var showingSignUp: Bool
     @State private var email = ""
     @State private var password = ""
     @State private var confirmPassword = ""
@@ -28,17 +27,13 @@ struct SignUpView: View {
             
             Button("Sign Up") {
                 // Handle signup logic here
-                let user = User(id: UUID().uuidString, username: username, email: email, password: password, created_at: Date().iso8601String)
+                let user = User(id: UUID().uuidString, username: username, email: email, created_at: "")
                 Task {
-                    try await Auth.shared.signUp(user: user)
+                    try await Auth.shared.signUp(user: user, password: password)
                 }
             }
             .buttonStyle(.borderedProminent)
-            
-            Button("Already have an account? Login") {
-                showingSignUp = false
-            }
-            .buttonStyle(.plain)
+        
         }
         .padding()
         .background(Color.white)

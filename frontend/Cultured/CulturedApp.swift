@@ -1,6 +1,5 @@
 import SwiftUI
 import Auth
-import Views
 
 @main
 struct CulturedApp: App {

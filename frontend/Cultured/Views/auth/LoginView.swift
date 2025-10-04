@@ -2,7 +2,6 @@ import SwiftUI
 import Auth
 
 struct LoginView: View {
-    @Binding var showingSignUp: Bool
     @State private var email = ""
     @State private var password = ""
     
@@ -26,10 +25,6 @@ struct LoginView: View {
             }
             .buttonStyle(.borderedProminent)
             
-            Button("Don't have an account? Sign Up") {
-                showingSignUp = true
-            }
-            .buttonStyle(.plain)
         }
         .padding()
         .background(Color.white)
