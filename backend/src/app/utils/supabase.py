@@ -85,7 +85,7 @@ async def add_url_to_thumbnails_bucket(url: str, file_name: str = None) -> Dict[
             if url_parts and '.' in url_parts[-1]:
                 file_name = url_parts[-1]
             else:
-                file_name = f"thumbnail_{int(time.time())}.jpg"
+                file_name = f"image_{int(time.time())}.jpg"
         
         # Download the content from the URL
         async with httpx.AsyncClient() as http_client:
@@ -114,6 +114,136 @@ async def add_url_to_thumbnails_bucket(url: str, file_name: str = None) -> Dict[
             "bucket": "thumbnails"
         }
 
+def list_thumbnails() -> Dict[str, Any]:
+    """
+    List all files in the thumbnails bucket
+    """
+    try:
+        client = get_client()
+        
+        # List all files in the thumbnails bucket
+        files_response = client.storage.from_("thumbnails").list()
+        
+        # Get public URLs for each file
+        thumbnails = []
+        for file_info in files_response:
+            if file_info.get('name'):  # Make sure it's a file, not a folder
+                # Get the public URL for the file
+                public_url = client.storage.from_("thumbnails").get_public_url(file_info['name'])
+                
+                thumbnails.append({
+                    "file_name": file_info['name'],
+                    "public_url": public_url,
+                    "size": file_info.get('metadata', {}).get('size'),
+                    "created_at": file_info.get('created_at'),
+                    "updated_at": file_info.get('updated_at')
+                })
+        
+        return {
+            "success": True,
+            "bucket": "thumbnails",
+            "count": len(thumbnails),
+            "thumbnails": thumbnails
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "bucket": "thumbnails"
+        }
+
+
+def list_generated_images() -> Dict[str, Any]:
+    """
+    List all files in the generated_images bucket
+    """
+    try:
+        client = get_client()
+        
+        # List all files in the generated_images bucket
+        files_response = client.storage.from_("generated_images").list()
+        
+        # Get public URLs for each file
+        generated_images = []
+        for file_info in files_response:
+            if file_info.get('name'):  # Make sure it's a file, not a folder
+                # Get the public URL for the file
+                public_url = client.storage.from_("generated_images").get_public_url(file_info['name'])
+                
+                generated_images.append({
+                    "file_name": file_info['name'],
+                    "public_url": public_url,
+                    "size": file_info.get('metadata', {}).get('size'),
+                    "created_at": file_info.get('created_at'),
+                    "updated_at": file_info.get('updated_at')
+                })
+        
+        return {
+            "success": True,
+            "bucket": "generated_images",
+            "count": len(generated_images),
+            "generated_images": generated_images
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "bucket": "generated_images"
+        }
+
+
+
+def get_generated_image_url(file_name: str) -> Dict[str, Any]:
+    """
+    Get the public URL for a specific file in the generated_images bucket
+    
+    Args:
+        file_name: Name of the file to get URL for
+        
+    Returns:
+        Dictionary with success status and file information
+    """
+    try:
+        client = get_client()
+        
+        # Check if file exists in the bucket
+        files_response = client.storage.from_("generated_images").list()
+        
+        # Look for the specific file
+        file_found = False
+        file_info = None
+        
+        for file_data in files_response:
+            if file_data.get('name') == file_name:
+                file_found = True
+                file_info = file_data
+                break
+        
+        if not file_found:
+            return {
+                "success": False,
+                "error": f"File '{file_name}' not found in generated_images bucket",
+                "bucket": "generated_images"
+            }
+        
+        # Get the public URL for the file
+        public_url = client.storage.from_("generated_images").get_public_url(file_name)
+        
+        return {
+            "success": True,
+            "bucket": "generated_images",
+            "file_name": file_name,
+            "public_url": public_url,
+            "size": file_info.get('metadata', {}).get('size'),
+            "created_at": file_info.get('created_at'),
+            "updated_at": file_info.get('updated_at')
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "bucket": "generated_images"
+        }
 
 
 
