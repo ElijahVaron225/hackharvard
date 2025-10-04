@@ -1,6 +1,6 @@
 import fastapi
 from fastapi.responses import StreamingResponse
-from app.utils.elevenlabs import get_elevenlabs_client
+from src.app.utils.elevenlabs import get_elevenlabs_client
 from pydantic import BaseModel, Field
 import io
 

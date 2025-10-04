@@ -1,5 +1,5 @@
 # Create a function to return the elevenlabs client
-from app.core.config import settings
+from src.app.core.config import settings
 from elevenlabs import ElevenLabs
 
 def get_elevenlabs_client() -> ElevenLabs:
