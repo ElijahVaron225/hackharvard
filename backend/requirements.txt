@@ -1,2 +1,5 @@
 fastapi>=0.111
 uvicorn[standard]>=0.30
+pytest>=7.0.0
+httpx>=0.24.0
+google-generativeai>=0.3.0
