@@ -10,7 +10,7 @@ struct CreateView: View {
             VStack(spacing: 20) {
                 // Input Section
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Give ")
+                    Text("Please describe your item in as much detail as possible. Let me know what the item is, what it is used for, and any important features or characteristics that make it unique. You can also include context, such as where it is commonly found, why it is valuable or interesting, and anything else you think would help others understand it better.")
                         .font(.headline)
                     
                     TextEditor(text: $userInput)

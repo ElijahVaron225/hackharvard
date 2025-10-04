@@ -37,7 +37,7 @@ struct TextAnalysis {
     
     var formattedOutput: String {
         """
-        📝 Text Analysis:
+        Text Analysis:
         
         Words: \(wordCount)
         Characters: \(characterCount)

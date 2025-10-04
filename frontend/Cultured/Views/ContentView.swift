@@ -1,32 +1,46 @@
 import SwiftUI
+
 struct ContentView: View {
-    var body: some View {
-        ZStack{
-            Color(.systemBackground)
-                .ignoresSafeArea(.all)
-            VStack(spacing: 0){
-                Divider()
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 0){
-                        Divider()
-                        FeedList()
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color(.systemBackground).ignoresSafeArea()
+                VStack(spacing: 0) {
+                    Divider()
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            Divider()
+                            FeedList()
+                        }
+                    }
+                    Divider()
+                    BottomTabBar()
 
-                    }
-                }
-                Divider()
-                BottomTabBar()
-                
-            }
-            
-        }
-        .background(Color.black)
-        .ignoresSafeArea(.container, edges: .top)
-        
-    }
-}
-
-
-
-#Preview {
-    ContentView()
+                    // Put the link inside the NavigationStack
+                    NavigationLink {
+                        ExperienceView(experience: .testExperience)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "play.circle.fill").font(.title2)
+                            Text("Launch Experience").font(.headline)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(
+                            LinearGradient(colors: [.blue, .blue.opacity(0.8)],
+                                           startPoint: .leading, endPoint: .trailing)
+                        )
+                        .foregroundColor(.white)
+                        .cornerRadius(16)
+                        .shadow(color: .blue.opacity(0.3), radius: 10, y: 5)
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 20)
+                    .buttonStyle(.plain)
+                }
+            }
+            .background(Color.black)
+            .ignoresSafeArea(.container, edges: .top)
+        }
+    }
 }
