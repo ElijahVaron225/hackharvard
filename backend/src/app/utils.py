@@ -20,18 +20,25 @@ class ExponentialBackoff:
         self, 
         initial_delay: float = 2.0, 
         max_delay: float = 30.0, 
+        stable_delay: float = None,
         multiplier: float = 1.5,
         jitter: bool = True
     ):
         self.initial_delay = initial_delay
         self.max_delay = max_delay
+        self.stable_delay = stable_delay
         self.multiplier = multiplier
         self.jitter = jitter
         self.current_delay = initial_delay
+        self.has_reached_max = False
     
     def get_next_delay(self) -> float:
         """Get the next delay value."""
-        delay = self.current_delay
+        # If we've reached max delay and have a stable delay, use that
+        if self.has_reached_max and self.stable_delay is not None:
+            delay = self.stable_delay
+        else:
+            delay = self.current_delay
         
         if self.jitter:
             # Add random jitter (±25% of the delay)
@@ -39,13 +46,17 @@ class ExponentialBackoff:
             delay += random.uniform(-jitter_range, jitter_range)
         
         # Update for next call
-        self.current_delay = min(self.current_delay * self.multiplier, self.max_delay)
+        if not self.has_reached_max:
+            self.current_delay = min(self.current_delay * self.multiplier, self.max_delay)
+            if self.current_delay >= self.max_delay:
+                self.has_reached_max = True
         
         return max(0, delay)
     
     def reset(self):
         """Reset the backoff to initial values."""
         self.current_delay = self.initial_delay
+        self.has_reached_max = False
 
 
 async def download_file(url: str, file_path: str, timeout: float = 300.0) -> bool:

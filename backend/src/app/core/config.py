@@ -20,7 +20,8 @@ class Settings(BaseModel):
     # Polling configuration
     POLLING_TIMEOUT_MINUTES: int = int(os.getenv("POLLING_TIMEOUT_MINUTES", "45"))
     POLLING_INITIAL_DELAY: float = float(os.getenv("POLLING_INITIAL_DELAY", "2.0"))
-    POLLING_MAX_DELAY: float = float(os.getenv("POLLING_MAX_DELAY", "30.0"))
+    POLLING_MAX_DELAY: float = float(os.getenv("POLLING_MAX_DELAY", "60.0"))
+    POLLING_STABLE_DELAY: float = float(os.getenv("POLLING_STABLE_DELAY", "20.0"))
     
     # Job cleanup configuration
     JOB_CLEANUP_AGE_HOURS: int = int(os.getenv("JOB_CLEANUP_AGE_HOURS", "24"))

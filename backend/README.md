@@ -57,7 +57,8 @@ POST /scan → Kiri Engine API → Background Polling → ZIP Download → USDZ 
    API_V1_PREFIX=/api/v1
    POLLING_TIMEOUT_MINUTES=45
    POLLING_INITIAL_DELAY=2.0
-   POLLING_MAX_DELAY=30.0
+   POLLING_MAX_DELAY=60.0
+   POLLING_STABLE_DELAY=20.0
    JOB_CLEANUP_AGE_HOURS=24
    ```
 
@@ -230,14 +231,16 @@ curl -X GET "http://localhost:8000/api/v1/scan/stats"
 | `KIRI_API_KEY` | Kiri Engine API key | - | Yes |
 | `POLLING_TIMEOUT_MINUTES` | Maximum polling time | 45 | No |
 | `POLLING_INITIAL_DELAY` | Initial delay between polls (seconds) | 2.0 | No |
-| `POLLING_MAX_DELAY` | Maximum delay between polls (seconds) | 30.0 | No |
+| `POLLING_MAX_DELAY` | Maximum delay before stable polling (seconds) | 60.0 | No |
+| `POLLING_STABLE_DELAY` | Stable polling delay after max reached (seconds) | 20.0 | No |
 | `JOB_CLEANUP_AGE_HOURS` | Age threshold for job cleanup | 24 | No |
 
 ### Polling Behavior
 
 The service uses exponential backoff for polling:
 - **Initial delay**: 2 seconds
-- **Maximum delay**: 30 seconds
+- **Maximum delay**: 60 seconds (1 minute)
+- **Stable delay**: 20 seconds (after reaching maximum)
 - **Multiplier**: 1.5x
 - **Jitter**: ±25% random variation
 - **Timeout**: 45 minutes (configurable)

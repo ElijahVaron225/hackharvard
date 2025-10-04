@@ -4,24 +4,21 @@ import httpx
 from typing import Optional, Dict, Any
 from .models import KiriCreateJobResponse, KiriStatusResponse, KiriModelZipResponse
 from .core.config import settings
-from .mock_config import mock_config
 import logging
 
 logger = logging.getLogger(__name__)
 
 
 class KiriEngineClient:
-    """Client for interacting with Kiri Engine API (mock or real)."""
+    """Client for interacting with Kiri Engine API."""
     
     def __init__(self, api_key: str = None):
-        self.api_key = api_key or mock_config.get_api_key()
-        self.base_url = mock_config.get_api_url()
-        self.headers = mock_config.get_headers()
-        
-        if mock_config.is_mock_mode():
-            logger.info("🔧 Running in MOCK mode - no real API calls will be made")
-        else:
-            logger.info("🌐 Running in REAL mode - will make actual API calls")
+        self.api_key = api_key or settings.KIRI_API_KEY
+        self.base_url = "https://api.kiriengine.app"
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
     
     async def create_job(
         self, 
