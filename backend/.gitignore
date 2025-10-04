@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+pip-wheel-metadata/
+
+# Virtual envs & env files
+.venv/
+venv/
+.env
+.env.*
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage / tooling (optional)
+.coverage
+htmlcov/
+.tox/
