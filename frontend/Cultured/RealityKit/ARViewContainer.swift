@@ -191,9 +191,20 @@ struct ARViewContainer: UIViewRepresentable {
         private let pitchSensitivity: Float = 0.52 // more responsive pitch
         private let deadZone: Float = 0.010 // radians ≈ 0.57° (smaller dead zone)
         
-        // Separate smoothing alphas for yaw and pitch
-        private let yawAlpha: Float = 0.18 // more responsive yaw smoothing
-        private let pitchAlpha: Float = 0.16 // slightly smoother pitch
+        // Time-constant smoothing parameters
+        private let tauYaw: Float = 0.22 // time constant for yaw smoothing (seconds)
+        private let tauPitch: Float = 0.25 // time constant for pitch smoothing (seconds)
+        
+        // Spike rejection thresholds
+        private let spikeThresholdYaw: Float = 1.0 // radians
+        private let spikeThresholdPitch: Float = 0.6 // radians
+        
+        // Slew-rate limiting
+        private let maxYawStepPerSec: Float = 2.2 // rad/s
+        private let maxPitchStepPerSec: Float = 1.8 // rad/s
+        
+        // Quaternion slerp safety
+        private let maxAnglePerSec: Float = 2.5 // rad/s
         
         // Ramp-up state for first-tilt jump prevention
         private var rampUpProgress: Float = 0.0
@@ -208,6 +219,21 @@ struct ARViewContainer: UIViewRepresentable {
         // Smoothed motion state
         private var smoothedYaw: Float = 0
         private var smoothedPitch: Float = 0
+        
+        // Yaw unwrapping state
+        private var continuousYaw: Float = 0
+        
+        // Ring buffer for median filtering (5 samples)
+        private var yawBuffer: [Float] = Array(repeating: 0, count: 5)
+        private var pitchBuffer: [Float] = Array(repeating: 0, count: 5)
+        private var bufferIndex: Int = 0
+        
+        // Previous smoothed values for spike detection
+        private var prevSmoothedYaw: Float = 0
+        private var prevSmoothedPitch: Float = 0
+        
+        // Previous applied quaternion for slerp safety
+        private var prevAppliedQuaternion: simd_quatf = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
         
         // Inertia (drag)
         private var velocityYaw:   Float = 0
@@ -284,6 +310,33 @@ struct ARViewContainer: UIViewRepresentable {
             }
         }
         
+        // MARK: Helper Functions
+        
+        private func median(_ values: [Float]) -> Float {
+            let sorted = values.sorted()
+            let count = sorted.count
+            if count % 2 == 0 {
+                return (sorted[count / 2 - 1] + sorted[count / 2]) / 2
+            } else {
+                return sorted[count / 2]
+            }
+        }
+        
+        private func unwrapYaw(_ yaw: Float) -> Float {
+            let delta = yaw - continuousYaw
+            let wrappedDelta = atan2(sin(delta), cos(delta))
+            continuousYaw += wrappedDelta
+            return continuousYaw
+        }
+        
+        private func clampSpike(_ value: Float, _ previous: Float, _ threshold: Float) -> Float {
+            let delta = value - previous
+            if abs(delta) > threshold {
+                return previous + (delta > 0 ? threshold : -threshold)
+            }
+            return value
+        }
+        
         // MARK: Device Motion
         private func setupDeviceMotion() {
             // Check if device motion is available
@@ -323,12 +376,16 @@ struct ARViewContainer: UIViewRepresentable {
         
         private func handleDeviceMotion(_ motion: CMDeviceMotion) {
             let currentTime: TimeInterval = CACurrentMediaTime()
+            let dt: Float = Float(motion.timestamp - (referenceAttitude?.timestamp ?? currentTime))
             
             // Set reference attitude on first motion
             if referenceAttitude == nil {
                 referenceAttitude = motion.attitude
                 smoothedYaw = 0
                 smoothedPitch = 0
+                continuousYaw = 0
+                prevSmoothedYaw = 0
+                prevSmoothedPitch = 0
                 rampUpProgress = 0.0
                 rampUpStartTime = currentTime
                 return
@@ -374,7 +431,6 @@ struct ARViewContainer: UIViewRepresentable {
             let forwardZ: Float = -m22
             
             // Compute yaw via horizontal projection (no pitch/roll bleed)
-            // Project forward vector onto horizontal plane (Y=0)
             let horizontalX: Float = forwardX
             let horizontalZ: Float = forwardZ
             let rawYaw: Float = atan2(horizontalX, horizontalZ)
@@ -387,7 +443,7 @@ struct ARViewContainer: UIViewRepresentable {
             let yawAdj: Float = yawSign * rawYaw
             let pitchAdj: Float = pitchSign * rawPitch
             
-            // Apply dead zone before sensitivity and smoothing
+            // Apply dead zone
             let yawDead: Float = abs(yawAdj) < deadZone ? 0.0 : yawAdj
             let pitchDead: Float = abs(pitchAdj) < deadZone ? 0.0 : pitchAdj
             
@@ -400,34 +456,69 @@ struct ARViewContainer: UIViewRepresentable {
                 return
             }
             
-            // Update ramp-up progress
+            // 1) Unwrap yaw to continuous angle
+            let unwrappedYaw: Float = unwrapYaw(yawSens)
+            
+            // 2) Add to ring buffer for median filtering
+            yawBuffer[bufferIndex] = unwrappedYaw
+            pitchBuffer[bufferIndex] = pitchSens
+            bufferIndex = (bufferIndex + 1) % 5
+            
+            // 3) Apply median filtering
+            let medianYaw: Float = median(yawBuffer)
+            let medianPitch: Float = median(pitchBuffer)
+            
+            // 4) Spike rejection
+            let spikeClampedYaw: Float = clampSpike(medianYaw, prevSmoothedYaw, spikeThresholdYaw)
+            let spikeClampedPitch: Float = clampSpike(medianPitch, prevSmoothedPitch, spikeThresholdPitch)
+            
+            // 5) Slew-rate limiting
+            let maxYawStep: Float = maxYawStepPerSec * dt
+            let maxPitchStep: Float = maxPitchStepPerSec * dt
+            
+            let yawDelta: Float = spikeClampedYaw - prevSmoothedYaw
+            let pitchDelta: Float = spikeClampedPitch - prevSmoothedPitch
+            
+            let clampedYawDelta: Float = max(-maxYawStep, min(maxYawStep, yawDelta))
+            let clampedPitchDelta: Float = max(-maxPitchStep, min(maxPitchStep, pitchDelta))
+            
+            let targetYaw: Float = prevSmoothedYaw + clampedYawDelta
+            let targetPitch: Float = prevSmoothedPitch + clampedPitchDelta
+            
+            // 6) Time-constant smoothing (EMA with dt)
+            let alphaYaw: Float = 1.0 - exp(-dt / tauYaw)
+            let alphaPitch: Float = 1.0 - exp(-dt / tauPitch)
+            
+            smoothedYaw = smoothedYaw + alphaYaw * (targetYaw - smoothedYaw)
+            smoothedPitch = smoothedPitch + alphaPitch * (targetPitch - smoothedPitch)
+            
+            // 7) Apply ramp-up to prevent first-tilt jump
             let rampElapsed: Float = Float(currentTime - rampUpStartTime)
             rampUpProgress = min(1.0, rampElapsed / rampUpDuration)
             
-            // Apply ramp-up to prevent first-tilt jump
-            let rampedYaw: Float = yawSens * rampUpProgress
-            let rampedPitch: Float = pitchSens * rampUpProgress
+            let rampedYaw: Float = smoothedYaw * rampUpProgress
+            let rampedPitch: Float = smoothedPitch * rampUpProgress
             
-            // Smooth the motion with separate EMA alphas
-            smoothedYaw = (1.0 - yawAlpha) * smoothedYaw + yawAlpha * rampedYaw
-            smoothedPitch = (1.0 - pitchAlpha) * smoothedPitch + pitchAlpha * rampedPitch
-            
-            // Clamp pitch to avoid looking past the poles (yaw remains unbounded)
+            // 8) Clamp pitch to avoid looking past the poles (yaw remains unbounded)
             let maxPitchRad: Float = 75 * .pi / 180 // 75 degrees
-            smoothedPitch = max(-maxPitchRad, min(maxPitchRad, smoothedPitch))
+            let finalPitch: Float = max(-maxPitchRad, min(maxPitchRad, rampedPitch))
+            
+            // Update previous values for next frame
+            prevSmoothedYaw = smoothedYaw
+            prevSmoothedPitch = smoothedPitch
             
             // Debug output (compile-time flag)
             #if DEBUG
             if debugMotion {
-                let yawDeg: Float = smoothedYaw * 180 / .pi
-                let pitchDeg: Float = smoothedPitch * 180 / .pi
+                let yawDeg: Float = rampedYaw * 180 / .pi
+                let pitchDeg: Float = finalPitch * 180 / .pi
                 print("Yaw: \(yawDeg)°, Pitch: \(pitchDeg)°, Ramp: \(rampUpProgress)")
             }
             #endif
             
             // Update device motion values
-            deviceMotionYaw = smoothedYaw
-            deviceMotionPitch = smoothedPitch
+            deviceMotionYaw = rampedYaw
+            deviceMotionPitch = finalPitch
             
             // Update camera with combined motion
             updateCameraWithMotion()
@@ -583,8 +674,20 @@ struct ARViewContainer: UIViewRepresentable {
             deviceMotionPitch = 0
             smoothedYaw = 0
             smoothedPitch = 0
+            continuousYaw = 0
+            prevSmoothedYaw = 0
+            prevSmoothedPitch = 0
             rampUpProgress = 0.0
             rampUpStartTime = CACurrentMediaTime()
+            
+            // Reset ring buffers
+            yawBuffer = Array(repeating: 0, count: 5)
+            pitchBuffer = Array(repeating: 0, count: 5)
+            bufferIndex = 0
+            
+            // Reset quaternion state
+            prevAppliedQuaternion = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+            
             referenceAttitude = nil // Reset reference for next motion
             updateCamera(yaw: 0, pitch: 0)
         }
@@ -698,10 +801,18 @@ struct ARViewContainer: UIViewRepresentable {
             let qPitch: simd_quatf = simd_quatf(angle: pitch, axis: SIMD3<Float>(1, 0, 0)) // local X
             
             // Compose rotations: yaw first, then pitch (consistent with existing drag behavior)
-            let composedRotation: simd_quatf = simd_normalize(qYaw * qPitch)
+            let targetQuaternion: simd_quatf = simd_normalize(qYaw * qPitch)
+            
+            // Quaternion slerp safety to prevent snapping
+            let angleBetween: Float = acos(max(-1.0, min(1.0, abs(simd_dot(prevAppliedQuaternion, targetQuaternion)))))
+            let maxAnglePerFrame: Float = maxAnglePerSec * (1.0 / 60.0) // Assume 60 FPS for safety
+            
+            let slerpFactor: Float = min(1.0, maxAnglePerFrame / max(angleBetween, 0.001))
+            let finalQuaternion: simd_quatf = simd_slerp(prevAppliedQuaternion, targetQuaternion, slerpFactor)
             
             // Update camera anchor orientation
-            cameraAnchor.orientation = composedRotation
+            cameraAnchor.orientation = finalQuaternion
+            prevAppliedQuaternion = finalQuaternion
         }
         
         func loadAssets(in arView: ARView, experience: Experience) {
