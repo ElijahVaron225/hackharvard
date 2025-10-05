@@ -372,3 +372,104 @@ async def add_usdz_to_bucket(usdz_file_path: str, file_name: str = None) -> Dict
             "error": str(e),
             "bucket": "user_scanned_items"
         }
+
+async def add_processed_image_to_bucket(image_data: bytes, file_name: str) -> Dict[str, Any]:
+    """
+    Upload a processed image to the user_scanned_items bucket
+    
+    Args:
+        image_data: Raw image data (bytes)
+        file_name: Filename for the image
+        
+    Returns:
+        Dictionary with success status and file information
+    """
+    print(f"📤 [SUPABASE] Uploading processed image to bucket: {file_name}")
+    print(f"📤 [SUPABASE] Image data size: {len(image_data)} bytes")
+    try:
+        client = get_client()
+        print(f"📤 [SUPABASE] Supabase client created successfully")
+        
+        # Upload the processed image to the user_scanned_items bucket
+        print(f"📤 [SUPABASE] Starting upload to user_scanned_items bucket...")
+        upload_response = client.storage.from_("user_scanned_items").upload(
+            path=file_name,
+            file=image_data,
+            file_options={"content-type": "image/png"}
+        )
+        print(f"✅ [SUPABASE] Upload response: {upload_response}")
+        
+        # Get the public URL for the uploaded file
+        public_url = client.storage.from_("user_scanned_items").get_public_url(file_name)
+        print(f"🔗 [SUPABASE] Public URL generated: {public_url}")
+        
+        result = {
+            "success": True,
+            "bucket": "user_scanned_items",
+            "file_name": file_name,
+            "public_url": public_url,
+            "response": upload_response
+        }
+        print(f"✅ [SUPABASE] Upload successful: {result}")
+        return result
+    except Exception as e:
+        print(f"❌ [SUPABASE] Upload failed: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e),
+            "bucket": "user_scanned_items"
+        }
+
+async def update_post_user_scanned_item(post_id: str, processed_image_url: str) -> Dict[str, Any]:
+    """
+    Update a post's user_scanned_item field with the processed image URL
+    
+    Args:
+        post_id: ID of the post to update
+        processed_image_url: URL of the processed image
+        
+    Returns:
+        Dictionary with success status
+    """
+    print(f"💾 [DATABASE] Updating post {post_id} with processed image URL: {processed_image_url}")
+    try:
+        client = get_client()
+        print(f"💾 [DATABASE] Supabase client created for database update")
+        
+        # First, let's check if the post exists
+        print(f"💾 [DATABASE] Checking if post {post_id} exists...")
+        check_response = client.from_("posts").select("id").eq("id", post_id).execute()
+        print(f"💾 [DATABASE] Post check response: {check_response}")
+        
+        if not check_response.data:
+            print(f"❌ [DATABASE] Post {post_id} not found in database")
+            return {
+                "success": False,
+                "error": f"Post {post_id} not found",
+                "post_id": post_id
+            }
+        
+        print(f"✅ [DATABASE] Post {post_id} found, proceeding with update...")
+        
+        # Update the post
+        response = client.from_("posts").update({
+            "user_scanned_item": processed_image_url
+        }).eq("id", post_id).execute()
+        
+        print(f"✅ [DATABASE] Update response: {response}")
+        
+        result = {
+            "success": True,
+            "post_id": post_id,
+            "user_scanned_item": processed_image_url,
+            "response": response
+        }
+        print(f"✅ [DATABASE] Database update successful: {result}")
+        return result
+    except Exception as e:
+        print(f"❌ [DATABASE] Database update failed: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e),
+            "post_id": post_id
+        }

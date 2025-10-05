@@ -6,6 +6,7 @@ from app.api.v1.endpoints.skybox import router as skybox_router
 from app.api.v1.endpoints.supabase import router as supabase_router
 from app.api.v1.endpoints.api import router as api_router
 from app.api.v1.endpoints.kiri import router as kiri_router
+from app.api.v1.endpoints.image_processing import router as image_processing_router
 
 router = APIRouter()
 router.include_router(health_router, prefix="/health", tags=["health"])
@@ -15,6 +16,7 @@ router.include_router(skybox_router, prefix="/skybox", tags=["skybox"])
 router.include_router(supabase_router, prefix="/supabase", tags=["supabase"])
 router.include_router(api_router, prefix="/api", tags=["api"])
 router.include_router(kiri_router, prefix="/kiri", tags=["kiri"])
+router.include_router(image_processing_router, prefix="/image-processing", tags=["image-processing"])
 
 
 

@@ -17,6 +17,9 @@ class Settings(BaseModel):
     # Kiri Engine API configuration
     KIRI_API_KEY: str = os.getenv("KIRI_API_KEY")
     
+    # Remove.bg API configuration
+    REMOVE_BG_KEY: str = os.getenv("REMOVE_BG_KEY")
+    
     # Polling configuration
     POLLING_TIMEOUT_MINUTES: int = int(os.getenv("POLLING_TIMEOUT_MINUTES", "45"))
     POLLING_INITIAL_DELAY: float = float(os.getenv("POLLING_INITIAL_DELAY", "2.0"))

@@ -51,6 +51,11 @@ async def workflow(request: Union[str, dict] = Body(...)):
         
         # Send the prompt for skybox generation
         result = await send_prompt(send_prompt_request)
+        
+        # If we have a post_id, also process any uploaded images
+        if post_id:
+            await process_uploaded_images_for_post(post_id)
+        
         return result
     except Exception as e:
         print(f"💥 Error in workflow: {str(e)}")
@@ -213,6 +218,91 @@ async def launch_experience_from_post(post_id: str):
     except Exception as e:
         print(f"💥 Error in launch-experience: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+async def process_uploaded_images_for_post(post_id: str):
+    """
+    Process any uploaded images for a specific post.
+    This function checks if the post has uploaded images and processes them.
+    """
+    print(f"🔍 [WORKFLOW] Checking for uploaded images for post {post_id}")
+    try:
+        from app.utils.supabase import get_client
+        client = get_client()
+        print(f"🔍 [WORKFLOW] Supabase client created")
+        
+        # Get the post data to check for uploaded images
+        print(f"🔍 [WORKFLOW] Fetching post data for {post_id}...")
+        post_response = client.from_("posts").select("*").eq("id", post_id).execute()
+        print(f"🔍 [WORKFLOW] Post response: {post_response}")
+        
+        if not post_response.data:
+            print(f"⚠️ [WORKFLOW] Post {post_id} not found")
+            return
+        
+        post_data = post_response.data[0]
+        print(f"🔍 [WORKFLOW] Post data: {post_data}")
+        
+        # Check if there are any uploaded images that need processing
+        # Look for fields that might contain uploaded image URLs
+        uploaded_image_url = None
+        
+        # Check common fields where users might upload images
+        if post_data.get("uploaded_image_url"):
+            uploaded_image_url = post_data.get("uploaded_image_url")
+            print(f"🔍 [WORKFLOW] Found uploaded_image_url: {uploaded_image_url}")
+        elif post_data.get("image_url"):
+            uploaded_image_url = post_data.get("image_url")
+            print(f"🔍 [WORKFLOW] Found image_url: {uploaded_image_url}")
+        elif post_data.get("user_uploaded_image"):
+            uploaded_image_url = post_data.get("user_uploaded_image")
+            print(f"🔍 [WORKFLOW] Found user_uploaded_image: {uploaded_image_url}")
+        
+        if uploaded_image_url:
+            print(f"🖼️ [WORKFLOW] Processing uploaded image for post {post_id}: {uploaded_image_url}")
+            
+            # Import the image processing function
+            from app.utils.image_processing import remove_background_and_add_white_bg
+            from app.utils.supabase import add_processed_image_to_bucket, update_post_user_scanned_item
+            import uuid
+            
+            try:
+                # Process the image
+                print(f"🖼️ [WORKFLOW] Starting Remove.bg processing...")
+                processed_image_data = await remove_background_and_add_white_bg(uploaded_image_url)
+                print(f"✅ [WORKFLOW] Remove.bg processing completed")
+                
+                # Generate a unique filename for the processed image
+                file_name = f"processed_heirloom_{post_id}_{uuid.uuid4()}.png"
+                print(f"📝 [WORKFLOW] Generated filename: {file_name}")
+                
+                # Upload the processed image to Supabase
+                print(f"📤 [WORKFLOW] Uploading to Supabase...")
+                upload_result = await add_processed_image_to_bucket(processed_image_data, file_name)
+                print(f"📤 [WORKFLOW] Upload result: {upload_result}")
+                
+                if upload_result["success"]:
+                    processed_image_public_url = upload_result["public_url"]
+                    print(f"🔗 [WORKFLOW] Processed image URL: {processed_image_public_url}")
+                    
+                    # Update the post with the processed image URL
+                    print(f"💾 [WORKFLOW] Updating database...")
+                    update_result = await update_post_user_scanned_item(post_id, processed_image_public_url)
+                    print(f"💾 [WORKFLOW] Database update result: {update_result}")
+                    
+                    if update_result["success"]:
+                        print(f"✅ [WORKFLOW] Successfully processed and uploaded image for post {post_id}")
+                    else:
+                        print(f"⚠️ [WORKFLOW] Failed to update post {post_id} with processed image URL: {update_result['error']}")
+                else:
+                    print(f"❌ [WORKFLOW] Failed to upload processed image: {upload_result['error']}")
+                    
+            except Exception as e:
+                print(f"❌ [WORKFLOW] Error processing image for post {post_id}: {str(e)}")
+        else:
+            print(f"ℹ️ [WORKFLOW] No uploaded images found for post {post_id}")
+            
+    except Exception as e:
+        print(f"❌ [WORKFLOW] Error in process_uploaded_images_for_post: {str(e)}")
 
 
 

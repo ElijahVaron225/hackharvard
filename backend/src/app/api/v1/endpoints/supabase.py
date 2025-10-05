@@ -76,10 +76,50 @@ def get_generated_image(file_name: str):
     
 @router.get("/get-posts")
 async def get_all_posts():
-    """Gets all the posts"""
+    """Gets all the posts - returns 3 real hardcoded posts for demo"""
+    print("📱 [BACKEND] get-posts endpoint called")
     try:
-        return await get_posts()
+        # Return 3 real hardcoded posts from your data
+        hardcoded_posts = [
+            {
+                "idx": 8,
+                "id": "136f2b79-0565-4f7d-96fa-e0887f2b8722",
+                "user_id": "b6e81940-0567-4967-8789-447a6cb8aa5c",
+                "thumbnail_url": "https://ygrolpbmsuhcslizztvy.supabase.co/storage/v1/object/public/generated_images/M3_Cinematic_Realism_equirectangular-png_Make_a_photoreal_PBR_351798456_14400545.png",
+                "user_scanned_item": "https://ygrolpbmsuhcslizztvy.supabase.co/storage/v1/object/public/user_scanned_items/testImage2.png",
+                "generated_images": "https://ygrolpbmsuhcslizztvy.supabase.co/storage/v1/object/public/generated_images/M3_Cinematic_Realism_equirectangular-png_Make_a_photoreal_PBR_351798456_14400545.png",
+                "created_at": "2025-10-05 08:08:08.392334+00",
+                "caption": "india necklace",
+                "likes": 0
+            },
+            {
+                "idx": 9,
+                "id": "4a132889-ce10-4bef-b9cf-22f6cba7f7ca",
+                "user_id": "b6e81940-0567-4967-8789-447a6cb8aa5c",
+                "thumbnail_url": "https://ygrolpbmsuhcslizztvy.supabase.co/storage/v1/object/public/generated_images/M3_Cinematic_Realism_equirectangular-jpg_Photoreal_PBR_3D_scene_1261325315_14400622.jpg",
+                "user_scanned_item": "https://ygrolpbmsuhcslizztvy.supabase.co/storage/v1/object/public/user_scanned_items/testImage.jpg",
+                "generated_images": "https://ygrolpbmsuhcslizztvy.supabase.co/storage/v1/object/public/generated_images/M3_Cinematic_Realism_equirectangular-jpg_Photoreal_PBR_3D_scene_1261325315_14400622.jpg",
+                "created_at": "2025-10-05 07:59:58.59562+00",
+                "caption": "Hack Harvard",
+                "likes": 0
+            },
+            {
+                "idx": 10,
+                "id": "964c81e9-c998-467d-9e28-f5a1b6eeae2c",
+                "user_id": "b6e81940-0567-4967-8789-447a6cb8aa5c",
+                "thumbnail_url": "https://ygrolpbmsuhcslizztvy.supabase.co/storage/v1/object/public/generated_images/M3_Cinematic_Realism_equirectangular-jpg_Photoreal_PBR_3D_scene_1706171275_14400628.jpg",
+                "user_scanned_item": "https://ygrolpbmsuhcslizztvy.supabase.co/storage/v1/object/public/user_scanned_items/testImage3.png",
+                "generated_images": "https://ygrolpbmsuhcslizztvy.supabase.co/storage/v1/object/public/generated_images/M3_Cinematic_Realism_equirectangular-jpg_Photoreal_PBR_3D_scene_1706171275_14400628.jpg",
+                "created_at": "2025-10-05 07:52:23.422968+00",
+                "caption": "Watch",
+                "likes": 0
+            }
+        ]
+        
+        print(f"📱 [BACKEND] Returning {len(hardcoded_posts)} real hardcoded posts")
+        return hardcoded_posts
     except Exception as e:
+        print(f"❌ [BACKEND] Error getting posts: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
         
 
