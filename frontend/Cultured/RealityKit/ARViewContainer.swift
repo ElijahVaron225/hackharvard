@@ -305,15 +305,29 @@ struct ARViewContainer: UIViewRepresentable {
                 return
             }
             
-            // Calculate relative attitude
-            let relativeAttitude = motion.attitude.multiply(byInverseOf: referenceAttitude!)
+            // Calculate relative attitude - multiply(byInverseOf:) returns Void and mutates receiver
+            var rel: CMAttitude = motion.attitude
+            rel.multiply(byInverseOf: referenceAttitude!)
             
             // Extract yaw and pitch (ignore roll to avoid horizon tilt)
             // CoreMotion quaternion: CMQuaternion(x, y, z, w)
-            let cmQuat = relativeAttitude.quaternion
-            let yaw: Float = atan2(2 * (cmQuat.w * cmQuat.z + cmQuat.x * cmQuat.y),
-                                  1 - 2 * (cmQuat.y * cmQuat.y + cmQuat.z * cmQuat.z))
-            let pitch: Float = asin(2 * (cmQuat.w * cmQuat.y - cmQuat.z * cmQuat.x))
+            let cmQuat: CMQuaternion = rel.quaternion
+            
+            // Break up complex math to avoid type-checker timeouts
+            let w: Float = Float(cmQuat.w)
+            let x: Float = Float(cmQuat.x)
+            let y: Float = Float(cmQuat.y)
+            let z: Float = Float(cmQuat.z)
+            
+            // Yaw calculation with explicit intermediate terms
+            let t0: Float = 2 * (w * z + x * y)
+            let t1: Float = 1 - 2 * (y * y + z * z)
+            let yaw: Float = atan2(t0, t1)
+            
+            // Pitch calculation with clamping
+            let t2: Float = 2 * (w * y - z * x)
+            let t2c: Float = max(-1.0 as Float, min(1.0 as Float, t2))
+            let pitch: Float = asin(t2c)
             
             // Apply sensitivity and dead zone
             let scaledYaw: Float = yaw * motionSensitivity
