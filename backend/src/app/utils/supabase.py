@@ -284,7 +284,9 @@ async def update_post(post: Post) -> Dict[str, Any]:
     """
     try:
         client = get_client()
-        response = client.table("posts").update(post).eq("id", value=post.id).execute()
+        # Convert Post model to dict for update
+        post_dict = post.model_dump(exclude_unset=True)
+        response = client.from_("posts").update(post_dict).eq("id", post.id).execute()
         return {
             "success": True,
             "post_id": post.id,
@@ -294,7 +296,7 @@ async def update_post(post: Post) -> Dict[str, Any]:
         return {
             "success": False,
             "error": str(e),
-            "bucket": "posts"
+            "post_id": post.id
         }
 
 
