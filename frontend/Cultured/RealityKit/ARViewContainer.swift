@@ -181,10 +181,21 @@ struct ARViewContainer: UIViewRepresentable {
         private var deviceMotionYaw: Float = 0
         private var deviceMotionPitch: Float = 0
         private var isDeviceMotionEnabled = true
-        private var motionSensitivity: Float = 1.0
-        private var motionDeadZone: Float = 0.01 // rad
         private var isDraggingDeviceMotion = false
         private var deviceMotionWeight: Float = 1.0 // 0-1, reduced during drag
+        
+        // Gyro axis mapping tunables
+        private let yawSign: Float = -1 // flip if right tilt moves the camera the wrong way
+        private let pitchSign: Float = 1 // flip if up tilt moves the camera the wrong way
+        private let swapAxes = false // set true only if needed
+        private let yawSensitivity: Float = 0.55
+        private let pitchSensitivity: Float = 0.45
+        private let deadZone: Float = 0.02 // radians ≈ 1.1°
+        private let smoothingAlpha: Float = 0.15 // low-pass filter strength
+        
+        // Smoothed motion state
+        private var smoothedYaw: Float = 0
+        private var smoothedPitch: Float = 0
         
         // Inertia (drag)
         private var velocityYaw:   Float = 0
@@ -302,6 +313,8 @@ struct ARViewContainer: UIViewRepresentable {
             // Set reference attitude on first motion
             if referenceAttitude == nil {
                 referenceAttitude = motion.attitude
+                smoothedYaw = 0
+                smoothedPitch = 0
                 return
             }
             
@@ -322,25 +335,44 @@ struct ARViewContainer: UIViewRepresentable {
             // Yaw calculation with explicit intermediate terms
             let t0: Float = 2 * (w * z + x * y)
             let t1: Float = 1 - 2 * (y * y + z * z)
-            let yaw: Float = atan2(t0, t1)
+            let rawYaw: Float = atan2(t0, t1)
             
             // Pitch calculation with clamping
             let t2: Float = 2 * (w * y - z * x)
             let t2c: Float = max(-1.0 as Float, min(1.0 as Float, t2))
-            let pitch: Float = asin(t2c)
+            let rawPitch: Float = asin(t2c)
             
-            // Apply sensitivity and dead zone
-            let scaledYaw: Float = yaw * motionSensitivity
-            let scaledPitch: Float = pitch * motionSensitivity
+            // Apply axis mapping corrections
+            var yawAdj: Float = yawSign * rawYaw
+            var pitchAdj: Float = pitchSign * rawPitch
+            
+            // Swap axes if needed (currently not needed)
+            if swapAxes {
+                let temp = yawAdj
+                yawAdj = pitchAdj
+                pitchAdj = temp
+            }
+            
+            // Apply sensitivity
+            yawAdj *= yawSensitivity
+            pitchAdj *= pitchSensitivity
             
             // Apply dead zone
-            if abs(scaledYaw) < motionDeadZone && abs(scaledPitch) < motionDeadZone {
+            if abs(yawAdj) < deadZone && abs(pitchAdj) < deadZone {
                 return
             }
             
+            // Smooth the motion with low-pass filter
+            smoothedYaw = smoothedYaw + smoothingAlpha * (yawAdj - smoothedYaw)
+            smoothedPitch = smoothedPitch + smoothingAlpha * (pitchAdj - smoothedPitch)
+            
+            // Clamp pitch to avoid looking past the poles
+            let maxPitchRad: Float = 75 * .pi / 180 // 75 degrees
+            smoothedPitch = max(-maxPitchRad, min(maxPitchRad, smoothedPitch))
+            
             // Update device motion values
-            deviceMotionYaw = scaledYaw
-            deviceMotionPitch = scaledPitch
+            deviceMotionYaw = smoothedYaw
+            deviceMotionPitch = smoothedPitch
             
             // Update camera with combined motion
             updateCameraWithMotion()
@@ -494,6 +526,8 @@ struct ARViewContainer: UIViewRepresentable {
             pitch = 0
             deviceMotionYaw = 0
             deviceMotionPitch = 0
+            smoothedYaw = 0
+            smoothedPitch = 0
             referenceAttitude = nil // Reset reference for next motion
             updateCamera(yaw: 0, pitch: 0)
         }
