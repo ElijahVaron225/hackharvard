@@ -298,6 +298,32 @@ async def update_post(post: Post) -> Dict[str, Any]:
         }
 
 
+async def update_post_urls(post_id: str, image_url: str, thumbnail_url: str) -> Dict[str, Any]:
+    """
+    Update a post with generated image URLs
+    """
+    try:
+        client = get_client()
+        response = client.from_("posts").update({
+            "image_url": image_url,
+            "thumbnail_url": thumbnail_url
+        }).eq("id", post_id).execute()
+        
+        return {
+            "success": True,
+            "post_id": post_id,
+            "image_url": image_url,
+            "thumbnail_url": thumbnail_url,
+            "response": response
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "post_id": post_id
+        }
+
+
 async def add_usdz_to_bucket(usdz_file_path: str, file_name: str = None) -> Dict[str, Any]:
     """
     Upload a USDZ file to the user_scanned_items bucket
