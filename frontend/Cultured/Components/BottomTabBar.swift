@@ -13,15 +13,22 @@ import SwiftUI
 
 struct BottomTabBar: View {
     @State private var selected = 0
+    let onHomeTap: (() -> Void)?
+    let onCreateTap: (() -> Void)?
+    
+    init(onHomeTap: (() -> Void)? = nil, onCreateTap: (() -> Void)? = nil) {
+        self.onHomeTap = onHomeTap
+        self.onCreateTap = onCreateTap
+    }
 
     var body: some View {
         HStack {
             Spacer()
-            TabItem(icon: "house.fill", index: 0, selected: $selected)
+            TabItem(icon: "house.fill", index: 0, selected: $selected, onTap: onHomeTap)
             Spacer()
-            TabItem(icon: "plus.app.fill", index: 2, selected: $selected)
+            TabItem(icon: "plus.app.fill", index: 2, selected: $selected, onTap: onCreateTap)
             Spacer()
-            TabItem(icon: "person.circle", index: 4, selected: $selected)
+            TabItem(icon: "person.circle", index: 4, selected: $selected, onTap: nil)
             Spacer()
         }
         .padding(.horizontal, 24)
@@ -38,6 +45,7 @@ struct TabItem: View{
     let icon: String
     let index: Int
     @Binding var selected: Int
+    let onTap: (() -> Void)?
     
     var body: some View{
         
@@ -50,6 +58,7 @@ struct TabItem: View{
         .contentShape(Rectangle())
         .onTapGesture {
             selected = index
+            onTap?()
         }
         .toolbarBackground(.visible, for: .tabBar)
         .background {

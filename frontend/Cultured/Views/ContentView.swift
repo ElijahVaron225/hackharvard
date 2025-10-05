@@ -1,8 +1,10 @@
 import SwiftUI
 
 struct ContentView: View {
-    var body: some View {
-        NavigationStack {
+    @State private var showCreateView = false
+    
+    var body: some View {
+        NavigationStack {
             ZStack {
                 Color(.systemBackground).ignoresSafeArea()
                 VStack(spacing: 0) {
@@ -14,7 +16,14 @@ struct ContentView: View {
                         }
                     }
                     Divider()
-                    BottomTabBar()
+                    BottomTabBar(
+                        onHomeTap: {
+                            // Navigate back to root - this will be handled by the NavigationStack
+                        },
+                        onCreateTap: {
+                            showCreateView = true
+                        }
+                    )
 
                     // Put the link inside the NavigationStack
                     NavigationLink {
@@ -39,8 +48,11 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .background(Color.black)
-            .ignoresSafeArea(.container, edges: .top)
-        }
-    }
+            .background(Color.black)
+            .ignoresSafeArea(.container, edges: .top)
+        }
+        .fullScreenCover(isPresented: $showCreateView) {
+            CreateView()
+        }
+    }
 }
