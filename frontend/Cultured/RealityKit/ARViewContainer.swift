@@ -235,6 +235,9 @@ struct ARViewContainer: UIViewRepresentable {
         // Previous applied quaternion for slerp safety
         private var prevAppliedQuaternion: simd_quatf = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
         
+        // Motion timing state
+        private var lastMotionTimestamp: TimeInterval? = nil
+        
         // Inertia (drag)
         private var velocityYaw:   Float = 0
         private var velocityPitch: Float = 0
@@ -375,8 +378,22 @@ struct ARViewContainer: UIViewRepresentable {
         }
         
         private func handleDeviceMotion(_ motion: CMDeviceMotion) {
-            let currentTime: TimeInterval = CACurrentMediaTime()
-            let dt: Float = Float(motion.timestamp - (referenceAttitude?.timestamp ?? currentTime))
+            let currentTime: TimeInterval = motion.timestamp
+            
+            // Compute dt from motion timestamps
+            let dt: Float
+            if let lastTimestamp = lastMotionTimestamp {
+                dt = Float(currentTime - lastTimestamp)
+            } else {
+                // First frame - use default dt
+                dt = 1.0 / 60.0 // 60 FPS default
+            }
+            
+            // Clamp & validate dt to prevent huge steps
+            let clampedDt: Float = max(1.0 / 120.0, min(0.25, dt)) // 120 FPS min, 4 FPS max
+            
+            // Update timestamp for next frame
+            lastMotionTimestamp = currentTime
             
             // Set reference attitude on first motion
             if referenceAttitude == nil {
@@ -387,7 +404,7 @@ struct ARViewContainer: UIViewRepresentable {
                 prevSmoothedYaw = 0
                 prevSmoothedPitch = 0
                 rampUpProgress = 0.0
-                rampUpStartTime = currentTime
+                rampUpStartTime = CACurrentMediaTime()
                 return
             }
             
@@ -473,8 +490,8 @@ struct ARViewContainer: UIViewRepresentable {
             let spikeClampedPitch: Float = clampSpike(medianPitch, prevSmoothedPitch, spikeThresholdPitch)
             
             // 5) Slew-rate limiting
-            let maxYawStep: Float = maxYawStepPerSec * dt
-            let maxPitchStep: Float = maxPitchStepPerSec * dt
+            let maxYawStep: Float = maxYawStepPerSec * clampedDt
+            let maxPitchStep: Float = maxPitchStepPerSec * clampedDt
             
             let yawDelta: Float = spikeClampedYaw - prevSmoothedYaw
             let pitchDelta: Float = spikeClampedPitch - prevSmoothedPitch
@@ -486,8 +503,8 @@ struct ARViewContainer: UIViewRepresentable {
             let targetPitch: Float = prevSmoothedPitch + clampedPitchDelta
             
             // 6) Time-constant smoothing (EMA with dt)
-            let alphaYaw: Float = 1.0 - exp(-dt / tauYaw)
-            let alphaPitch: Float = 1.0 - exp(-dt / tauPitch)
+            let alphaYaw: Float = 1.0 - exp(-clampedDt / tauYaw)
+            let alphaPitch: Float = 1.0 - exp(-clampedDt / tauPitch)
             
             smoothedYaw = smoothedYaw + alphaYaw * (targetYaw - smoothedYaw)
             smoothedPitch = smoothedPitch + alphaPitch * (targetPitch - smoothedPitch)
@@ -687,6 +704,9 @@ struct ARViewContainer: UIViewRepresentable {
             
             // Reset quaternion state
             prevAppliedQuaternion = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+            
+            // Reset motion timing
+            lastMotionTimestamp = nil
             
             referenceAttitude = nil // Reset reference for next motion
             updateCamera(yaw: 0, pitch: 0)
