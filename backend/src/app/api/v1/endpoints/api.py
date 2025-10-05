@@ -182,12 +182,12 @@ async def launch_experience_from_post(post_id: str):
         post_data = post_response.data[0]
         
         # Check if post already has generated content
-        if post_data.get("image_url") and post_data.get("thumbnail_url"):
+        if post_data.get("generated_images") and post_data.get("thumbnail_url"):
             print(f"✅ Post {post_id} already has generated content")
             return {
                 "status": "success",
                 "post_id": post_id,
-                "file_url": post_data.get("image_url"),
+                "file_url": post_data.get("generated_images"),
                 "thumb_url": post_data.get("thumbnail_url"),
                 "generation_id": post_data.get("generation_id"),
                 "already_generated": True

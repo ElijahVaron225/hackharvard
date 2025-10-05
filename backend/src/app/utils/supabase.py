@@ -305,14 +305,14 @@ async def update_post_urls(post_id: str, image_url: str, thumbnail_url: str) -> 
     try:
         client = get_client()
         response = client.from_("posts").update({
-            "image_url": image_url,
+            "generated_images": image_url,
             "thumbnail_url": thumbnail_url
         }).eq("id", post_id).execute()
         
         return {
             "success": True,
             "post_id": post_id,
-            "image_url": image_url,
+            "generated_images": image_url,
             "thumbnail_url": thumbnail_url,
             "response": response
         }
