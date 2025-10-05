@@ -185,26 +185,26 @@ struct ARViewContainer: UIViewRepresentable {
         private var deviceMotionWeight: Float = 1.0 // 0-1, reduced during drag
         
         // Gyro axis mapping tunables
-        private let yawSign: Float = -1 // invert left/right so turning left pans left
-        private let pitchSign: Float = 1 // keep pitch as-is unless we need to flip later
+        private let yawSign: Float = 1 // fixed: turning right pans right, turning left pans left
+        private let pitchSign: Float = 1 // keep pitch as-is
         private let yawSensitivity: Float = 0.85 // increased responsiveness (+42%)
         private let pitchSensitivity: Float = 0.68 // increased responsiveness (+31%)
-        private let deadZone: Float = 0.008 // radians ≈ 0.46° (reduced by 20%)
+        private let deadZone: Float = 0.006 // radians ≈ 0.34° (reduced for better responsiveness)
         
-        // Time-constant smoothing parameters (more responsive)
-        private let tauYaw: Float = 0.17 // time constant for yaw smoothing (seconds, -23%)
-        private let tauPitch: Float = 0.20 // time constant for pitch smoothing (seconds, -20%)
+        // Time-constant smoothing parameters (much more responsive)
+        private let tauYaw: Float = 0.10 // time constant for yaw smoothing (seconds, -41%)
+        private let tauPitch: Float = 0.12 // time constant for pitch smoothing (seconds, -40%)
         
         // Spike rejection thresholds
         private let spikeThresholdYaw: Float = 1.0 // radians
         private let spikeThresholdPitch: Float = 0.6 // radians
         
-        // Slew-rate limiting (allow quicker turns)
-        private let maxYawStepPerSec: Float = 2.9 // rad/s (+32%)
-        private let maxPitchStepPerSec: Float = 2.25 // rad/s (+25%)
+        // Slew-rate limiting (allow much faster turns)
+        private let maxYawStepPerSec: Float = 5.0 // rad/s (+72%)
+        private let maxPitchStepPerSec: Float = 3.5 // rad/s (+56%)
         
-        // Quaternion slerp safety (slightly more responsive)
-        private let maxAnglePerSec: Float = 3.1 // rad/s (+24%)
+        // Quaternion slerp safety (much more responsive)
+        private let maxAnglePerSec: Float = 5.5 // rad/s (+77%)
         
         // Ramp-up state for first-tilt jump prevention
         private var rampUpProgress: Float = 0.0
@@ -223,9 +223,9 @@ struct ARViewContainer: UIViewRepresentable {
         // Yaw unwrapping state
         private var continuousYaw: Float = 0
         
-        // Ring buffer for median filtering (5 samples)
-        private var yawBuffer: [Float] = Array(repeating: 0, count: 5)
-        private var pitchBuffer: [Float] = Array(repeating: 0, count: 5)
+        // Ring buffer for median filtering (3 samples for lower latency)
+        private var yawBuffer: [Float] = Array(repeating: 0, count: 3)
+        private var pitchBuffer: [Float] = Array(repeating: 0, count: 3)
         private var bufferIndex: Int = 0
         
         // Previous smoothed values for spike detection
@@ -479,7 +479,7 @@ struct ARViewContainer: UIViewRepresentable {
             // 2) Add to ring buffer for median filtering
             yawBuffer[bufferIndex] = unwrappedYaw
             pitchBuffer[bufferIndex] = pitchSens
-            bufferIndex = (bufferIndex + 1) % 5
+            bufferIndex = (bufferIndex + 1) % 3
             
             // 3) Apply median filtering
             let medianYaw: Float = median(yawBuffer)
@@ -698,8 +698,8 @@ struct ARViewContainer: UIViewRepresentable {
             rampUpStartTime = CACurrentMediaTime()
             
             // Reset ring buffers
-            yawBuffer = Array(repeating: 0, count: 5)
-            pitchBuffer = Array(repeating: 0, count: 5)
+            yawBuffer = Array(repeating: 0, count: 3)
+            pitchBuffer = Array(repeating: 0, count: 3)
             bufferIndex = 0
             
             // Reset quaternion state
