@@ -78,7 +78,7 @@ def get_generated_image(file_name: str):
 async def get_all_posts():
     """Gets all the posts"""
     try:
-        return get_posts()
+        return await get_posts()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
         
