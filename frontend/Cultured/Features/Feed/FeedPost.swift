@@ -2,6 +2,9 @@ import SwiftUI
 
 struct FeedPost: View {
     let post: Post
+    @ObservedObject var feedViewModel: FeedViewModel
+    @State private var showExperience = false
+    @State private var selectedExperience: Experience?
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0){
@@ -26,29 +29,48 @@ struct FeedPost: View {
             .padding(.horizontal)
             .padding(.vertical, 8)
             
-            // Main content image
-            ZStack{
-                Rectangle()
-                    .fill(.gray.opacity(0.25))
-                    .frame(maxWidth: .infinity)
-                    .aspectRatio(1, contentMode: .fit)
-                
-                if let thumbnailURL = post.thumbnail_url, !thumbnailURL.isEmpty {
-                    AsyncImage(url: URL(string: thumbnailURL)) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } placeholder: {
+            // Main content image - now tappable
+            Button(action: {
+                Task {
+                    await launchExperience()
+                }
+            }) {
+                ZStack{
+                    Rectangle()
+                        .fill(.gray.opacity(0.25))
+                        .frame(maxWidth: .infinity)
+                        .aspectRatio(1, contentMode: .fit)
+                    
+                    if let thumbnailURL = post.thumbnail_url, !thumbnailURL.isEmpty {
+                        AsyncImage(url: URL(string: thumbnailURL)) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } placeholder: {
+                            Image(systemName: "photo")
+                                .font(.system(size: 50))
+                                .foregroundColor(.gray)
+                        }
+                    } else {
                         Image(systemName: "photo")
                             .font(.system(size: 50))
                             .foregroundColor(.gray)
                     }
-                } else {
-                    Image(systemName: "photo")
-                        .font(.system(size: 50))
-                        .foregroundColor(.gray)
+                    
+                    // Loading overlay
+                    if feedViewModel.isLaunching(for: post) {
+                        Rectangle()
+                            .fill(.black.opacity(0.3))
+                            .overlay(
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .scaleEffect(0.8)
+                            )
+                    }
                 }
             }
+            .buttonStyle(.plain)
+            .disabled(feedViewModel.isLaunching(for: post))
             .clipped()
             
             // Action buttons
@@ -86,6 +108,20 @@ struct FeedPost: View {
             .padding(.vertical, 8)
             .padding(.horizontal)
         }
+        .sheet(isPresented: $showExperience) {
+            if let experience = selectedExperience {
+                ExperienceView(experience: experience)
+            }
+        }
+    }
+    
+    private func launchExperience() async {
+        guard let experience = await feedViewModel.launchExperience(for: post) else {
+            return
+        }
+        
+        selectedExperience = experience
+        showExperience = true
     }
     
     private var username: String {
@@ -129,5 +165,5 @@ struct FeedPost: View {
         generated_image: nil,
         likes: 5,
         created_at: Date()
-    ))
+    ), feedViewModel: FeedViewModel())
 }

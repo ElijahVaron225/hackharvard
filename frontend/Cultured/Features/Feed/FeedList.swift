@@ -75,7 +75,7 @@ struct FeedList: View {
                 .padding(.horizontal, 24)
             } else {
                 ForEach(viewModel.posts) { post in
-                    FeedPost(post: post)
+                    FeedPost(post: post, feedViewModel: viewModel)
                     Divider()
                 }
             }
