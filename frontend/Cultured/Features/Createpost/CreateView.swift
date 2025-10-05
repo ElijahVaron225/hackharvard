@@ -3,6 +3,7 @@ import SwiftUI
 struct CreateView: View {
     @State private var userInput: String = ""
     @State private var interpretedText: String = ""
+    @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         NavigationView {
@@ -57,6 +58,13 @@ struct CreateView: View {
             }
             .navigationTitle("Paragraph Interpreter")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
         }
     }
     
@@ -119,6 +127,9 @@ struct CreateView: View {
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
                 print("❌ API call failed: \(error)")
+                DispatchQueue.main.async {
+                    dismiss()
+                }
                 return
             }
             guard let httpResponse = response as? HTTPURLResponse else {
@@ -137,10 +148,25 @@ struct CreateView: View {
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     print("📝 API Response JSON: \(json)")
                     DispatchQueue.main.async {
-                        if let fileUrl = json["file_url"] as? String {
-                            print("🖼️ Generated image URL: \(fileUrl)")
-                            // TODO: store/display in UI as needed
-                        }
+                        // Extract all the URLs from the response
+                        let fileUrl = json["file_url"] as? String
+                        let thumbUrl = json["thumb_url"] as? String
+                        let supabaseGenerated = json["supabase_generated"] as? String
+                        let supabaseThumbnail = json["supabase_thumbnail"] as? String
+                        let generationId = json["generation_id"] as? String
+                        
+                        print("🖼️ Generated image URL: \(fileUrl ?? "nil")")
+                        print("📸 Thumbnail URL: \(thumbUrl ?? "nil")")
+                        print("☁️ Supabase Generated URL: \(supabaseGenerated ?? "nil")")
+                        print("☁️ Supabase Thumbnail URL: \(supabaseThumbnail ?? "nil")")
+                        print("🆔 Generation ID: \(generationId ?? "nil")")
+                        
+                        // TODO: Now you can use these URLs to update your Post
+                        // You can call CreatePostManager.shared.updatePost() with these URLs
+                        CreatePostManager.shared.updatePost(post: Post(post_id: generationId, user_id: userID, thumbnail_url: supabaseThumbnail, user_scanned_item: "", generated_images: fileUrl, likes: 0, created_at: Date()))
+                        
+                        // Dismiss the view and return to ContentView
+                        dismiss()
                     }
                 } else if let str = String(data: data, encoding: .utf8) {
                     print("📝 API Response (text): \(str)")
