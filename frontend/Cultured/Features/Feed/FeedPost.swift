@@ -12,10 +12,10 @@ struct FeedPost: View {
                     .frame(width: 36, height: 36)
                     .overlay(Image(systemName: "person.fill"))
                 VStack(alignment: .leading, spacing: 2){
-                    Text("User \(post.user_id.prefix(8))") // Show first 8 chars of user_id
+                    Text(username)
                         .font(.subheadline)
                         .fontWeight(.semibold)
-                    Text(timeAgoString(from: post.created_at))
+                    Text(timeAgoString)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -72,19 +72,13 @@ struct FeedPost: View {
                     Text("Liked by \(Text("\(post.likes) people").fontWeight(.semibold))")
                 }
                 
-                if let caption = post.caption, !caption.isEmpty {
-                    Text("\(Text("User \(post.user_id.prefix(8))").fontWeight(.semibold)) \(caption)")
+                if let caption = post.user_scanned_item, !caption.isEmpty {
+                    Text("\(Text(username).fontWeight(.semibold)) Shared: \(caption)")
                 } else {
-                    Text("\(Text("User \(post.user_id.prefix(8))").fontWeight(.semibold)) Shared a cultural artifact")
+                    Text("\(Text(username).fontWeight(.semibold)) Shared a cultural artifact")
                 }
                 
-                if let scannedItems = post.user_scanned_items, !scannedItems.isEmpty {
-                    Text("📱 Scanned: \(scannedItems)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                
-                Text(timeAgoString(from: post.created_at))
+                Text(timeAgoString)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -94,17 +88,22 @@ struct FeedPost: View {
         }
     }
     
-    private func timeAgoString(from dateString: String) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'"
-        formatter.timeZone = TimeZone(abbreviation: "UTC")
-        
-        guard let date = formatter.date(from: dateString) else {
-            return "Unknown time"
+    private var username: String {
+        // Try to get username from Auth, fallback to user_id
+        if let user = Auth.shared.user {
+            return user.username
+        } else {
+            return "User \(String(post.user_id.suffix(8)))"
+        }
+    }
+    
+    private var timeAgoString: String {
+        guard let created_at = post.created_at else {
+            return "Just now"
         }
         
         let now = Date()
-        let timeInterval = now.timeIntervalSince(date)
+        let timeInterval = now.timeIntervalSince(created_at)
         
         if timeInterval < 60 {
             return "Just now"
@@ -126,10 +125,9 @@ struct FeedPost: View {
         id: "preview-1",
         user_id: "user-123",
         thumbnail_url: nil,
-        user_scanned_items: "Navajo Basket",
-        generated_images: nil,
+        user_scanned_item: "Navajo Basket",
+        generated_image: nil,
         likes: 5,
-        caption: "My grandmother's traditional basket",
-        created_at: "2024-01-15T10:30:00.000000Z"
+        created_at: Date()
     ))
 }

@@ -1,5 +1,6 @@
 import Supabase
 import Foundation
+import Combine
 
 extension Date {
     var iso8601StringUTC: String {
@@ -43,10 +44,12 @@ struct User: Codable {
     let created_at: String
 }
 
-class Auth {
+final class Auth: ObservableObject {
     static let shared = Auth()
+    @Published private(set) var user: User? // Read-only outside
+    var userID: String? { user?.id } // Convenience getter
+    
     private let supabase: SupabaseClient
-    public var user: User?
 
     init(
         supabaseURL: String = "https://ygrolpbmsuhcslizztvy.supabase.co",

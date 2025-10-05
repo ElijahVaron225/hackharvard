@@ -5,17 +5,46 @@ struct ContentView: View {
     
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color(.systemBackground).ignoresSafeArea()
-                VStack(spacing: 0) {
-                    Divider()
-                    ScrollView(showsIndicators: false) {
-                        VStack(spacing: 0) {
-                            Divider()
-                            FeedList()
-                        }
-                    }
-                    Divider()
+            ScrollView(showsIndicators: false) {
+                FeedList()
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.background)
+            .navigationTitle("Feed")
+            .safeAreaInset(edge: .bottom) {
+                // Bottom section with CTA and tab bar
+                VStack(spacing: 0) {
+                    // Launch Experience CTA card
+                    NavigationLink {
+                        ExperienceView(experience: .testExperience)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "play.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(.primary)
+                            Text("Launch Experience")
+                                .font(.headline)
+                                .fontWeight(.medium)
+                        }
+                        .foregroundColor(.primary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .padding(.horizontal, 24)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(.ultraThinMaterial)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.primary.opacity(0.2), lineWidth: 1)
+                                )
+                        )
+                        .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 16)
+                    .buttonStyle(.plain)
+                    
+                    // Bottom tab bar
                     BottomTabBar(
                         onHomeTap: {
                             // Navigate back to root - this will be handled by the NavigationStack
@@ -24,32 +53,11 @@ struct ContentView: View {
                             showCreateView = true
                         }
                     )
-
-                    // Put the link inside the NavigationStack
-                    NavigationLink {
-                        ExperienceView(experience: .testExperience)
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "play.circle.fill").font(.title2)
-                            Text("Launch Experience").font(.headline)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(
-                            LinearGradient(colors: [.blue, .blue.opacity(0.8)],
-                                           startPoint: .leading, endPoint: .trailing)
-                        )
-                        .foregroundColor(.white)
-                        .cornerRadius(16)
-                        .shadow(color: .blue.opacity(0.3), radius: 10, y: 5)
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 20)
-                    .buttonStyle(.plain)
-                }
-            }
-            .background(Color.black)
-            .ignoresSafeArea(.container, edges: .top)
+                }
+                .background(Color.background)
+            }
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(Color.background, for: .navigationBar)
         }
         .fullScreenCover(isPresented: $showCreateView) {
             CreateView()

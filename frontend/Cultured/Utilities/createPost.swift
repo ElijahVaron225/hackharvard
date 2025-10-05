@@ -1,37 +1,80 @@
 import Foundation
+import Combine
 
-class CreatePostManager {
+class CreatePostManager: ObservableObject {
     static let shared = CreatePostManager()
-    private var post: Post?
+    @Published private(set) var post: Post?
     
     private init() {}
 
-    func createPost() async -> Void {
+    func createPost() async throws {
+        guard let userID = Auth.shared.userID else {
+            throw CreatePostError.noUser
+        }
+
+        let newPost = Post(
+            user_id: userID,
+            thumbnail_url: nil,
+            user_scanned_item: nil,
+            generated_image: nil,
+            likes: 0,
+            created_at: Date()
+        )
+
+        let url = URL(string: "http://127.0.0.1:8080/api/v1/supabase/create-post")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        request.httpBody = try encoder.encode(newPost)
+
         do {
-            let currentUser = Auth.shared.user
-            print("Current user: \(currentUser?.id)")
-
-            var newPost = Post(id: "", user_id: currentUser?.id ?? "", thumbnail_url: "", user_scanned_items: "", generated_images: "", likes: 0, caption: nil, created_at: "")
-
-            let url = URL(string: "https://hackharvard-u5gt.onrender.com/api/v1/supabase/create-post")!
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(newPost)
-
             let (data, response) = try await URLSession.shared.data(for: request)
-
-            // Parse the JSON response
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            if let postId = json?["post_id"] as? String {
-                newPost = Post(id: postId, user_id: newPost.user_id, thumbnail_url: newPost.thumbnail_url, user_scanned_items: newPost.user_scanned_items, generated_images: newPost.generated_images, likes: 0, caption: nil, created_at: "")
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw CreatePostError.invalidResponse
             }
             
-            self.post = newPost
-            print("Response: \(response)")
-            print("Data: \(String(data: data, encoding: .utf8) ?? "No data")")
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                let errorBody = String(data: data, encoding: .utf8) ?? "No error details"
+                print("HTTP \(httpResponse.statusCode): \(errorBody)")
+                throw CreatePostError.serverError(httpResponse.statusCode, errorBody)
+            }
+            
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            if let postId = json?["post_id"] as? String {
+                var updatedPost = newPost
+                updatedPost.id = postId
+                
+                await MainActor.run {
+                    self.post = updatedPost
+                }
+            }
+            
+            print("Post created successfully: \(String(data: data, encoding: .utf8) ?? "No data")")
+            
         } catch {
-            print("Error: \(error)")
+            print("CreatePost error: \(error)")
+            throw error
+        }
+    }
+}
+
+enum CreatePostError: LocalizedError {
+    case noUser
+    case invalidResponse
+    case serverError(Int, String)
+    
+    var errorDescription: String? {
+        switch self {
+        case .noUser:
+            return "No user logged in"
+        case .invalidResponse:
+            return "Invalid server response"
+        case .serverError(let code, let message):
+            return "Server error \(code): \(message)"
         }
     }
 }
