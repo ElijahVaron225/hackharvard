@@ -5,7 +5,6 @@ struct ExperienceView: View {
     let experience: Experience
     @Environment(\.dismiss) var dismiss
     @State private var isRotationLocked = false
-    @State private var isDeviceMotionEnabled = true
     
     var body: some View {
         ZStack {
@@ -39,19 +38,6 @@ struct ExperienceView: View {
                 
                 // Bottom controls
                 HStack(spacing: 20) {
-                    // Device motion toggle
-                    Button(action: { 
-                        isDeviceMotionEnabled.toggle()
-                        NotificationCenter.default.post(name: .toggleDeviceMotion, object: isDeviceMotionEnabled)
-                    }) {
-                        Image(systemName: isDeviceMotionEnabled ? "gyroscope" : "gyroscope.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(.white)
-                            .frame(width: 40, height: 40)
-                            .background(Color.black.opacity(0.6))
-                            .cornerRadius(20)
-                    }
-                    
                     // Lock/Unlock camera rotation
                     Button(action: { isRotationLocked.toggle() }) {
                         Image(systemName: isRotationLocked ? "lock.fill" : "lock.open.fill")
@@ -115,7 +101,6 @@ struct InfoCard: View {
 
 extension Notification.Name {
     static let recenterCamera = Notification.Name("recenterCamera")
-    static let toggleDeviceMotion = Notification.Name("toggleDeviceMotion")
 }
 
 #Preview {

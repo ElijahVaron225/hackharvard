@@ -97,6 +97,8 @@ struct CreateView: View {
             return
         }
         
+        let userID = Auth.shared.userID ?? "Anonymous"
+        
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -147,25 +149,31 @@ struct CreateView: View {
             do {
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     print("📝 API Response JSON: \(json)")
+                    // Extract all the URLs from the response
+                    let fileUrl = json["file_url"] as? String
+                    let thumbUrl = json["thumb_url"] as? String
+                    let supabaseGenerated = json["supabase_generated"] as? String
+                    let supabaseThumbnail = json["supabase_thumbnail"] as? String
+                    let generationId = json["generation_id"] as? String
+                    
+                    print("🖼️ Generated image URL: \(fileUrl ?? "nil")")
+                    print("📸 Thumbnail URL: \(thumbUrl ?? "nil")")
+                    print("☁️ Supabase Generated URL: \(supabaseGenerated ?? "nil")")
+                    print("☁️ Supabase Thumbnail URL: \(supabaseThumbnail ?? "nil")")
+                    print("🆔 Generation ID: \(generationId ?? "nil")")
+                    
+                    // TODO: Now you can use these URLs to update your Post
+                    // You can call CreatePostManager.shared.updatePost() with these URLs
+                    Task {
+                        do {
+                            try await CreatePostManager.shared.updatePost(post: Post(id: generationId, user_id: userID, thumbnail_url: supabaseThumbnail, user_scanned_item: "", generated_images: fileUrl, likes: 0, created_at: Date()))
+                        } catch {
+                            print("❌ Error updating post: \(error)")
+                        }
+                    }
+                    
+                    // Dismiss the view and return to ContentView
                     DispatchQueue.main.async {
-                        // Extract all the URLs from the response
-                        let fileUrl = json["file_url"] as? String
-                        let thumbUrl = json["thumb_url"] as? String
-                        let supabaseGenerated = json["supabase_generated"] as? String
-                        let supabaseThumbnail = json["supabase_thumbnail"] as? String
-                        let generationId = json["generation_id"] as? String
-                        
-                        print("🖼️ Generated image URL: \(fileUrl ?? "nil")")
-                        print("📸 Thumbnail URL: \(thumbUrl ?? "nil")")
-                        print("☁️ Supabase Generated URL: \(supabaseGenerated ?? "nil")")
-                        print("☁️ Supabase Thumbnail URL: \(supabaseThumbnail ?? "nil")")
-                        print("🆔 Generation ID: \(generationId ?? "nil")")
-                        
-                        // TODO: Now you can use these URLs to update your Post
-                        // You can call CreatePostManager.shared.updatePost() with these URLs
-                        CreatePostManager.shared.updatePost(post: Post(post_id: generationId, user_id: userID, thumbnail_url: supabaseThumbnail, user_scanned_item: "", generated_images: fileUrl, likes: 0, created_at: Date()))
-                        
-                        // Dismiss the view and return to ContentView
                         dismiss()
                     }
                 } else if let str = String(data: data, encoding: .utf8) {
