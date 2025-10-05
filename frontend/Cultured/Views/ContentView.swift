@@ -9,7 +9,7 @@ struct ContentView: View {
             ZStack {
                 // Clean iOS 16+ style background
                 Color.background
-                    .ignoresSafeArea()
+                    .ignoresSafeArea(.all)
                 
                 // Subtle animated accent
                 LinearGradient(
@@ -21,7 +21,7 @@ struct ContentView: View {
                     startPoint: animateGradient ? .topLeading : .bottomTrailing,
                     endPoint: animateGradient ? .bottomTrailing : .topLeading
                 )
-                .ignoresSafeArea()
+                .ignoresSafeArea(.all)
                 .animation(
                     Animation.easeInOut(duration: 15)
                         .repeatForever(autoreverses: true),
@@ -72,6 +72,10 @@ struct ContentView: View {
                     .padding(.horizontal, 24)
                     .padding(.top, 16)
                     .buttonStyle(.plain)
+                }
+                .safeAreaInset(edge: .top) {
+                    // Ensure proper top safe area handling
+                    Color.clear.frame(height: 0)
                 }
             }
         }
