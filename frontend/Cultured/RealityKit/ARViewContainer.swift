@@ -187,10 +187,18 @@ struct ARViewContainer: UIViewRepresentable {
         // Gyro axis mapping tunables
         private let yawSign: Float = -1 // invert left/right so turning left pans left
         private let pitchSign: Float = 1 // keep pitch as-is unless we need to flip later
-        private let yawSensitivity: Float = 0.45 // lower yaw sensitivity
-        private let pitchSensitivity: Float = 0.35 // lower pitch sensitivity
-        private let deadZone: Float = 0.02 // radians ≈ 1.1°
-        private let smoothingAlpha: Float = 0.15 // low-pass filter strength
+        private let yawSensitivity: Float = 0.60 // more responsive yaw
+        private let pitchSensitivity: Float = 0.52 // more responsive pitch
+        private let deadZone: Float = 0.010 // radians ≈ 0.57° (smaller dead zone)
+        
+        // Separate smoothing alphas for yaw and pitch
+        private let yawAlpha: Float = 0.18 // more responsive yaw smoothing
+        private let pitchAlpha: Float = 0.16 // slightly smoother pitch
+        
+        // Ramp-up state for first-tilt jump prevention
+        private var rampUpProgress: Float = 0.0
+        private let rampUpDuration: Float = 0.175 // 175ms ramp-up
+        private var rampUpStartTime: TimeInterval = 0
         
         // Debug flag for testing
         #if DEBUG
@@ -314,11 +322,15 @@ struct ARViewContainer: UIViewRepresentable {
         }
         
         private func handleDeviceMotion(_ motion: CMDeviceMotion) {
+            let currentTime: TimeInterval = CACurrentMediaTime()
+            
             // Set reference attitude on first motion
             if referenceAttitude == nil {
                 referenceAttitude = motion.attitude
                 smoothedYaw = 0
                 smoothedPitch = 0
+                rampUpProgress = 0.0
+                rampUpStartTime = currentTime
                 return
             }
             
@@ -375,18 +387,30 @@ struct ARViewContainer: UIViewRepresentable {
             let yawAdj: Float = yawSign * rawYaw
             let pitchAdj: Float = pitchSign * rawPitch
             
-            // Apply sensitivity
-            let yawSens: Float = yawAdj * yawSensitivity
-            let pitchSens: Float = pitchAdj * pitchSensitivity
+            // Apply dead zone before sensitivity and smoothing
+            let yawDead: Float = abs(yawAdj) < deadZone ? 0.0 : yawAdj
+            let pitchDead: Float = abs(pitchAdj) < deadZone ? 0.0 : pitchAdj
             
-            // Apply dead zone
-            if abs(yawSens) < deadZone && abs(pitchSens) < deadZone {
+            // Apply sensitivity
+            let yawSens: Float = yawDead * yawSensitivity
+            let pitchSens: Float = pitchDead * pitchSensitivity
+            
+            // Skip processing if both values are zero after dead zone
+            if yawSens == 0.0 && pitchSens == 0.0 {
                 return
             }
             
-            // Smooth the motion with low-pass filter
-            smoothedYaw = smoothedYaw + smoothingAlpha * (yawSens - smoothedYaw)
-            smoothedPitch = smoothedPitch + smoothingAlpha * (pitchSens - smoothedPitch)
+            // Update ramp-up progress
+            let rampElapsed: Float = Float(currentTime - rampUpStartTime)
+            rampUpProgress = min(1.0, rampElapsed / rampUpDuration)
+            
+            // Apply ramp-up to prevent first-tilt jump
+            let rampedYaw: Float = yawSens * rampUpProgress
+            let rampedPitch: Float = pitchSens * rampUpProgress
+            
+            // Smooth the motion with separate EMA alphas
+            smoothedYaw = (1.0 - yawAlpha) * smoothedYaw + yawAlpha * rampedYaw
+            smoothedPitch = (1.0 - pitchAlpha) * smoothedPitch + pitchAlpha * rampedPitch
             
             // Clamp pitch to avoid looking past the poles (yaw remains unbounded)
             let maxPitchRad: Float = 75 * .pi / 180 // 75 degrees
@@ -397,7 +421,7 @@ struct ARViewContainer: UIViewRepresentable {
             if debugMotion {
                 let yawDeg: Float = smoothedYaw * 180 / .pi
                 let pitchDeg: Float = smoothedPitch * 180 / .pi
-                print("Yaw: \(yawDeg)°, Pitch: \(pitchDeg)°")
+                print("Yaw: \(yawDeg)°, Pitch: \(pitchDeg)°, Ramp: \(rampUpProgress)")
             }
             #endif
             
@@ -559,6 +583,8 @@ struct ARViewContainer: UIViewRepresentable {
             deviceMotionPitch = 0
             smoothedYaw = 0
             smoothedPitch = 0
+            rampUpProgress = 0.0
+            rampUpStartTime = CACurrentMediaTime()
             referenceAttitude = nil // Reset reference for next motion
             updateCamera(yaw: 0, pitch: 0)
         }
