@@ -11,18 +11,39 @@ router = APIRouter(prefix="/prompts", tags=["prompts"])
 class WorkflowRequest(BaseModel):
     request: str = Field(..., description="The user's request/prompt")
 
+from typing import Union
+from fastapi import Body, HTTPException
+
 @router.post("/workflow", tags=["workflow"])
-async def workflow(request: str):
+async def workflow(request: Union[str, dict] = Body(...)):
+    # 👇 Added: unpack the user's text from either a raw string or common keys
+    if isinstance(request, str):
+        user_text = request
+    else:
+        user_text = (
+            request.get("prompt")
+            or request.get("text")
+            or request.get("message")
+            or request.get("input")
+            or request.get("query")
+            or request.get("content")
+        )
+        if not isinstance(user_text, str) or not user_text.strip():
+            raise HTTPException(
+                status_code=422,
+                detail="Send a JSON string or an object with one of: 'prompt', 'text', 'message', 'input', 'query', 'content'."
+            )
+
     try:
-        # Create a ChatRequest object from the workflow request
+        # Create a ChatRequest object from the unpacked text
         from app.api.v1.endpoints.gemini import ChatRequest
-        chat_request = ChatRequest(message=request)
+        chat_request = ChatRequest(message=user_text)
         
         # Get the prompt from Gemini
         gemini_response = chat_with_gemini(chat_request)
         
         # Extract the message from Gemini response and create SendPromptRequest
-        prompt_text = gemini_response.get("message", request)
+        prompt_text = gemini_response.get("message", user_text)
         send_prompt_request = SendPromptRequest(prompt=prompt_text)
         
         # Send the prompt for skybox generation
@@ -31,6 +52,7 @@ async def workflow(request: str):
     except Exception as e:
         print(f"💥 Error in workflow: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
     
 
 class SendPromptRequest(BaseModel):

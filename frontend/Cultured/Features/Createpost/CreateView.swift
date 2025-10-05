@@ -1,4 +1,3 @@
-
 import SwiftUI
 
 struct CreateView: View {
@@ -61,45 +60,60 @@ struct CreateView: View {
         }
     }
     
-    // REPLACE YOUR OLD interpretParagraph() WITH THIS:
+    // MARK: - Interpret & Send
     func interpretParagraph() {
         guard !userInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             interpretedText = "Please enter some text first."
             return
         }
         
-        // Use the ParagraphInterpreter struct
+        // Use your existing types
         let interpreter = ParagraphInterpreter(text: userInput)
         let analysis = interpreter.analyze()
         
-        // Call backend API with the text analysis
-        callBackendAPI(with: analysis)
-        
+        // Update UI immediately
         interpretedText = analysis.formattedOutput
+        
+        // Call backend
+        callBackendAPI(with: analysis)
     }
     
     // MARK: - Backend API Call
+    struct RequestPayload: Encodable {
+        let text: String      // <-- rename to whatever your API expects
+    }
+    
     func callBackendAPI(with analysis: TextAnalysis) {
-        guard let url = URL(string: "http://localhost:8000/api/v1/api/send-prompt") else {
+        guard let url = URL(string: "https://hackharvard-u5gt.onrender.com/api/v1/api/prompts/workflow") else {
             print("❌ Invalid URL")
             return
         }
         
-        // Create request body
-        let requestBody: [String: Any] = [
-            "prompt": analysis.formattedOutput
-        ]
-        
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
         
+        // Build a proper JSON object payload (top-level dictionary)
+        let payload = RequestPayload(text: analysis.formattedOutput)
+        
+        // Encode with JSONEncoder (handles dates etc if you add them later)
         do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.withoutEscapingSlashes] // nice-to-have
+            request.httpBody = try encoder.encode(payload)
         } catch {
-            print("❌ Error creating request body: \(error)")
+            print("❌ Error encoding request body: \(error)")
             return
         }
+        
+        // Log AFTER setting the body
+        if let body = request.httpBody, let s = String(data: body, encoding: .utf8) {
+            print("📦 HTTP Body (utf8):\n\(s)")
+        } else {
+            print("📭 HTTP Body is nil or not UTF-8")
+        }
+        print(request.curlString) // handy copy/paste for debugging
         
         // Make the API call
         URLSession.shared.dataTask(with: request) { data, response, error in
@@ -107,47 +121,66 @@ struct CreateView: View {
                 print("❌ API call failed: \(error)")
                 return
             }
-            
             guard let httpResponse = response as? HTTPURLResponse else {
                 print("❌ Invalid response")
                 return
             }
-            
             print("✅ API Response Status: \(httpResponse.statusCode)")
             
-            if let data = data {
-                do {
-                    if let jsonResponse = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                        print("📝 API Response: \(jsonResponse)")
-                        
-                        // Update UI on main thread
-                        DispatchQueue.main.async {
-                            if let fileUrl = jsonResponse["file_url"] as? String {
-                                // Handle the generated image URL
-                                print("🖼️ Generated image URL: \(fileUrl)")
-                                // You can store this URL or display it in your UI
-                            }
+            guard let data = data else {
+                print("❌ No data in response")
+                return
+            }
+            
+            // Try JSON first, fall back to raw string
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    print("📝 API Response JSON: \(json)")
+                    DispatchQueue.main.async {
+                        if let fileUrl = json["file_url"] as? String {
+                            print("🖼️ Generated image URL: \(fileUrl)")
+                            // TODO: store/display in UI as needed
                         }
                     }
-                } catch {
-                    print("❌ Error parsing JSON response: \(error)")
+                } else if let str = String(data: data, encoding: .utf8) {
+                    print("📝 API Response (text): \(str)")
+                } else {
+                    print("📝 API Response (bytes): \(data.count)")
+                }
+            } catch {
+                print("❌ Error parsing JSON response: \(error)")
+                if let str = String(data: data, encoding: .utf8) {
+                    print("Raw response:\n\(str)")
                 }
             }
         }.resume()
     }
 }
 
-struct ContentView_Previews: PreviewProvider {
+// MARK: - Preview
+struct CreateView_Previews: PreviewProvider {
     static var previews: some View {
-        ContentView()
+        CreateView()
     }
 }
 
+// MARK: - Nice curl logger (optional)
+extension URLRequest {
+    var curlString: String {
+        var lines = ["curl -X \(httpMethod ?? "GET") '\(url?.absoluteString ?? "")'"]
+        (allHTTPHeaderFields ?? [:]).forEach { k, v in lines.append("-H '\(k): \(v)'") }
+        if let body = httpBody, let s = String(data: body, encoding: .utf8) {
+            lines.append("--data '\(s)'")
+        }
+        return lines.joined(separator: " \\\n  ")
+    }
+}
+
+// MARK: - Style helpers (unchanged)
 extension Color {
     static let brand = Color.accentColor
     static let surface = Color(.secondarySystemBackground)
 }
-
 extension Font {
     static let h1 = Font.system(size: 22, weight: .semibold)
     static let mono = Font.system(.body, design: .monospaced)
