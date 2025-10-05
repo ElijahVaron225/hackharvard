@@ -15,6 +15,8 @@ struct Post: Codable, Identifiable {
     var thumbnail_url: String?
     var user_scanned_item: String?
     var generated_images: String? // Raw string from DB (can be single URL or JSON array)
+    var video_url: String? // Optional public URL of an attached video (non-breaking)
+    var image_url: String? // Optional public URL of an attached image (non-breaking)
     var likes: Int
     var created_at: Date?
 
@@ -23,6 +25,8 @@ struct Post: Codable, Identifiable {
          thumbnail_url: String? = nil,
          user_scanned_item: String? = nil,
          generated_images: String? = nil,
+         video_url: String? = nil,
+         image_url: String? = nil,
          likes: Int = 0,
          created_at: Date? = nil) {
         self.id = id
@@ -30,6 +34,8 @@ struct Post: Codable, Identifiable {
         self.thumbnail_url = thumbnail_url
         self.user_scanned_item = user_scanned_item
         self.generated_images = generated_images
+        self.video_url = video_url
+        self.image_url = image_url
         self.likes = likes
         self.created_at = created_at
     }
@@ -70,7 +76,7 @@ struct Post: Codable, Identifiable {
 // Custom decoding for created_at string to Date
 extension Post {
     enum CodingKeys: String, CodingKey {
-        case id, user_id, thumbnail_url, user_scanned_item, generated_images, likes, created_at
+        case id, user_id, thumbnail_url, user_scanned_item, generated_images, video_url, image_url, likes, created_at
     }
     
     init(from decoder: Decoder) throws {

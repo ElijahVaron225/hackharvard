@@ -1,10 +1,32 @@
 import SwiftUI
+import UIKit
+// Entry points and results used below:
+// - Video flow entry points: `VideoCaptureView` (camera, full-screen) and `VideoLibraryPicker` (library, sheet)
+//   from `Cultured/Features/Createpost/Video/UI.swift`. They handle permissions internally and return a local URL via closure.
+// - Upload service: `VideoUploadService.uploadVideo(from:)` from `Cultured/Features/Createpost/Video/VideoUploadService.swift`
+//   returns a public URL (String) on success. We store that String in local state and include it in the post update payload.
+// - Feature flag read: `video.attach.enabled` read from `supabase.plist` (default false). When false, CreateView behaves exactly as before.
 
 struct CreateView: View {
     @State private var userInput: String = ""
     @State private var interpretedText: String = ""
     @State private var showLogin = false
+    // Video attach state (optional / compilation-safe)
+    @State private var showRecorder = false
+    @State private var showLibrary = false
+    @State private var isUploadingVideo = false
+    @State private var attachedVideoPublicURL: String? = nil // Final public reference used in post payload if present
+    @State private var lastPickedLocalVideoURL: URL? = nil // For lightweight UI indicator
+    @State private var showVideoSourcePicker = false
+    @State private var videoErrorMessage: String? = nil
+    // Image attach state (optional / compilation-safe)
+    @State private var showImageLibrary = false
+    @State private var isUploadingImage = false
+    @State private var attachedImagePublicURL: String? = nil // Final public reference used in post payload if present
+    @State private var pickedImageThumbnail: UIImage? = nil // For lightweight UI indicator
     @Environment(\.dismiss) private var dismiss
+    private let videoUploadService = VideoUploadService()
+    private let imageUploadService = ImageUploadService()
     
     var body: some View {
         NavigationView {
@@ -26,6 +48,46 @@ struct CreateView: View {
                 }
                 .padding(.horizontal)
                 
+                // Add Video button (feature-flagged). Visible only when `video.attach.enabled` is true.
+                if isVideoAttachEnabled {
+                    Button {
+                        showVideoSourcePicker = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "paperclip")
+                            Text("Add Video")
+                        }
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue.opacity(0.9))
+                        .cornerRadius(10)
+                    }
+                    .padding(.horizontal)
+                    .disabled(isUploadingVideo)
+                }
+
+                // Add Image button (feature-flagged). Visible only when `image.attach.enabled` is true.
+                if isImageAttachEnabled {
+                    Button {
+                        showImageLibrary = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "photo")
+                            Text("Add Image")
+                        }
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue.opacity(0.9))
+                        .cornerRadius(10)
+                    }
+                    .padding(.horizontal)
+                    .disabled(isUploadingImage)
+                }
+
                 // Submit Button
                 Button(action: interpretParagraph) {
                     Text("Submit")
@@ -55,6 +117,42 @@ struct CreateView: View {
                     .padding(.horizontal)
                 }
                 
+                // Lightweight indicator when a video is attached (reuses simple text styling pattern)
+                if let localURL = lastPickedLocalVideoURL {
+                    VStack(spacing: 6) {
+                        Text("Video attached: \(localURL.lastPathComponent)")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                        if isUploadingVideo {
+                            ProgressView("Uploading video...")
+                                .padding(.top, 2)
+                        } else if attachedVideoPublicURL != nil {
+                            Text("Ready to post")
+                                .font(.caption)
+                                .foregroundColor(.green)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+
+                // Lightweight indicator when an image is attached
+                if pickedImageThumbnail != nil {
+                    VStack(spacing: 6) {
+                        Text("Image attached")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                        if isUploadingImage {
+                            ProgressView("Uploading image...")
+                                .padding(.top, 2)
+                        } else if attachedImagePublicURL != nil {
+                            Text("Ready to post")
+                                .font(.caption)
+                                .foregroundColor(.green)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+
                 Spacer()
             }
             .navigationTitle("Paragraph Interpreter")
@@ -70,6 +168,44 @@ struct CreateView: View {
         .sheet(isPresented: $showLogin) {
             LoginView()
         }
+        // Present existing video flows using the same entry points as in Video/UI.swift
+        // Camera capture (full-screen)
+        .fullScreenCover(isPresented: $showRecorder) {
+            VideoCaptureView { url in
+                handlePickedLocalVideo(url)
+            } onCancel: {
+                // Cancel is non-blocking; no state changes required
+            }
+            .ignoresSafeArea()
+        }
+        // Library picker (sheet)
+        .sheet(isPresented: $showLibrary) {
+            VideoLibraryPicker { url in
+                handlePickedLocalVideo(url)
+            } onCancel: {
+                // Cancel is non-blocking; no state changes required
+            }
+        }
+        // Image library picker (sheet)
+        .sheet(isPresented: $showImageLibrary) {
+            ImageLibraryPicker { image in
+                handlePickedImage(image)
+            } onCancel: {
+                // Non-blocking; do nothing
+            }
+        }
+        // Source picker (record vs library) matching existing module capabilities
+        .confirmationDialog("Add Video", isPresented: $showVideoSourcePicker, titleVisibility: .visible) {
+            Button("Record Video") { showRecorder = true }
+            Button("Choose from Library") { showLibrary = true }
+            Button("Cancel", role: .cancel) {}
+        }
+        // Non-blocking error notice via alert if upload fails
+        .alert("Video Error", isPresented: .constant(videoErrorMessage != nil), actions: {
+            Button("OK") { videoErrorMessage = nil }
+        }, message: {
+            Text(videoErrorMessage ?? "")
+        })
     }
     
     // MARK: - Interpret & Send
@@ -203,7 +339,8 @@ struct CreateView: View {
                     // You can call CreatePostManager.shared.updatePost() with these URLs
                     Task {
                         do {
-                            try await CreatePostManager.shared.updatePost(post: Post(id: generationId, user_id: userID, thumbnail_url: supabaseThumbnail, user_scanned_item: "", generated_images: fileUrl, likes: 0, created_at: Date()))
+                            // Include optional attached media URLs if available (non-breaking). Server contract remains unchanged for non-media posts.
+                            try await CreatePostManager.shared.updatePost(post: Post(id: generationId, user_id: userID, thumbnail_url: supabaseThumbnail, user_scanned_item: "", generated_images: fileUrl, video_url: attachedVideoPublicURL, image_url: attachedImagePublicURL, likes: 0, created_at: Date()))
                         } catch {
                             print("❌ Error updating post: \(error)")
                         }
@@ -255,4 +392,104 @@ extension Color {
 extension Font {
     static let h1 = Font.system(size: 22, weight: .semibold)
     static let mono = Font.system(.body, design: .monospaced)
+}
+
+// MARK: - Private helpers for feature flag and video handling
+private extension CreateView {
+    var isVideoAttachEnabled: Bool {
+        // Read from supabase.plist to avoid changing Info.plist; defaults to false when missing or invalid.
+        guard let url = Bundle.main.url(forResource: "supabase", withExtension: "plist"),
+              let data = try? Data(contentsOf: url),
+              let dict = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
+        else { return false }
+        if let b = dict["video.attach.enabled"] as? Bool { return b }
+        if let s = dict["video.attach.enabled"] as? String { return (s as NSString).boolValue }
+        return false
+    }
+    
+    func handlePickedLocalVideo(_ url: URL) {
+        lastPickedLocalVideoURL = url
+        attachedVideoPublicURL = nil
+        isUploadingVideo = true
+        Task {
+            do {
+                let publicURL = try await videoUploadService.uploadVideo(from: url)
+                await MainActor.run {
+                    attachedVideoPublicURL = publicURL
+                    isUploadingVideo = false
+                }
+            } catch {
+                print("❌ Upload failed: \(error.localizedDescription)")
+                await MainActor.run {
+                    isUploadingVideo = false
+                    videoErrorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+    var isImageAttachEnabled: Bool {
+        guard let url = Bundle.main.url(forResource: "supabase", withExtension: "plist"),
+              let data = try? Data(contentsOf: url),
+              let dict = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
+        else { return false }
+        if let b = dict["image.attach.enabled"] as? Bool { return b }
+        if let s = dict["image.attach.enabled"] as? String { return (s as NSString).boolValue }
+        return false
+    }
+    
+    func handlePickedImage(_ image: UIImage) {
+        pickedImageThumbnail = image
+        attachedImagePublicURL = nil
+        isUploadingImage = true
+        Task {
+            do {
+                let publicURL = try await imageUploadService.uploadImage(image)
+                await MainActor.run {
+                    attachedImagePublicURL = publicURL
+                    isUploadingImage = false
+                }
+            } catch {
+                print("❌ Image upload failed: \(error.localizedDescription)")
+                await MainActor.run {
+                    isUploadingImage = false
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Minimal UIKit image picker adapter (library only, parallel to video picker)
+struct ImageLibraryPicker: UIViewControllerRepresentable {
+    var onPicked: (UIImage) -> Void
+    var onCancel: (() -> Void)?
+    
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+    
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.delegate = context.coordinator
+        picker.mediaTypes = ["public.image"]
+        picker.sourceType = .photoLibrary
+        picker.modalPresentationStyle = .formSheet
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) { }
+    
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let parent: ImageLibraryPicker
+        init(parent: ImageLibraryPicker) { self.parent = parent }
+        
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            picker.dismiss(animated: true)
+            if let image = (info[.editedImage] ?? info[.originalImage]) as? UIImage {
+                parent.onPicked(image)
+            }
+        }
+        
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true)
+            parent.onCancel?()
+        }
+    }
 }
