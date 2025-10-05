@@ -14,7 +14,7 @@ struct Post: Codable, Identifiable {
     var user_id: String
     var thumbnail_url: String?
     var user_scanned_item: String?
-    var generated_image: String?
+    var generated_images: String? // Raw string from DB (can be single URL or JSON array)
     var likes: Int
     var created_at: Date?
 
@@ -22,23 +22,55 @@ struct Post: Codable, Identifiable {
          user_id: String,
          thumbnail_url: String? = nil,
          user_scanned_item: String? = nil,
-         generated_image: String? = nil,
+         generated_images: String? = nil,
          likes: Int = 0,
          created_at: Date? = nil) {
         self.id = id
         self.user_id = user_id
         self.thumbnail_url = thumbnail_url
         self.user_scanned_item = user_scanned_item
-        self.generated_image = generated_image
+        self.generated_images = generated_images
         self.likes = likes
         self.created_at = created_at
+    }
+    
+    // Computed property to get the primary generated image URL
+    var primaryGeneratedImageURL: URL? {
+        guard let generatedImages = generated_images?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !generatedImages.isEmpty else {
+            return nil
+        }
+        
+        // Try to parse as JSON array first
+        if generatedImages.hasPrefix("[") && generatedImages.hasSuffix("]") {
+            do {
+                let data = generatedImages.data(using: .utf8) ?? Data()
+                let urls = try JSONDecoder().decode([String].self, from: data)
+                // Find first non-empty URL
+                for urlString in urls {
+                    let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty, let url = URL(string: trimmed) {
+                        return url
+                    }
+                }
+            } catch {
+                print("Failed to parse generated_images as JSON array: \(error)")
+            }
+        }
+        
+        // Treat as single URL string
+        if let url = URL(string: generatedImages) {
+            return url
+        }
+        
+        return nil
     }
 }
 
 // Custom decoding for created_at string to Date
 extension Post {
     enum CodingKeys: String, CodingKey {
-        case id, user_id, thumbnail_url, user_scanned_item, generated_image, likes, created_at
+        case id, user_id, thumbnail_url, user_scanned_item, generated_images, likes, created_at
     }
     
     init(from decoder: Decoder) throws {
@@ -47,7 +79,7 @@ extension Post {
         user_id = try container.decode(String.self, forKey: .user_id)
         thumbnail_url = try container.decodeIfPresent(String.self, forKey: .thumbnail_url)
         user_scanned_item = try container.decodeIfPresent(String.self, forKey: .user_scanned_item)
-        generated_image = try container.decodeIfPresent(String.self, forKey: .generated_image)
+        generated_images = try container.decodeIfPresent(String.self, forKey: .generated_images)
         likes = try container.decodeIfPresent(Int.self, forKey: .likes) ?? 0
         
         // Handle created_at as either String or Date

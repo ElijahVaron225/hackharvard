@@ -57,23 +57,38 @@ final class FeedViewModel: ObservableObject {
         launchingPostId = postId
         defer { launchingPostId = nil }
         
-        // Check if we already have a generated image
-        if let generatedImage = post.generated_image, !generatedImage.isEmpty {
-            // Create experience from existing generated image
+        // Check if we have a generated image URL from the database
+        if let generatedImageURL = post.primaryGeneratedImageURL {
+            // Create experience from the generated image URL
             let experience = Experience(
                 id: postId,
-                skyboxURL: generatedImage,
-                modelURL: generatedImage, // Using same URL for both for now
+                skyboxURL: generatedImageURL.absoluteString,
+                modelURL: generatedImageURL.absoluteString, // Using same URL for both for now
                 artifactName: post.user_scanned_item ?? "Cultural Artifact",
                 culture: "Unknown Culture", // Could be enhanced with culture field
                 userStory: "Shared cultural artifact"
             )
+            print("Using generated image for post \(postId): \(generatedImageURL.absoluteString)")
             return experience
         }
         
-        // If no generated image, use the test experience for now
-        // In a real implementation, this would call the generation API
-        print("No generated image for post \(postId), using test experience")
+        // Fallback to thumbnail URL if available
+        if let thumbnailURL = post.thumbnail_url, !thumbnailURL.isEmpty,
+           let url = URL(string: thumbnailURL) {
+            let experience = Experience(
+                id: postId,
+                skyboxURL: thumbnailURL,
+                modelURL: thumbnailURL,
+                artifactName: post.user_scanned_item ?? "Cultural Artifact",
+                culture: "Unknown Culture",
+                userStory: "Shared cultural artifact"
+            )
+            print("Using thumbnail as fallback for post \(postId): \(thumbnailURL)")
+            return experience
+        }
+        
+        // Last resort: use test experience
+        print("No generated image or thumbnail for post \(postId), using test experience")
         return Experience.testExperience
     }
     

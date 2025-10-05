@@ -162,7 +162,7 @@ struct FeedPost: View {
         user_id: "user-123",
         thumbnail_url: nil,
         user_scanned_item: "Navajo Basket",
-        generated_image: nil,
+        generated_images: nil,
         likes: 5,
         created_at: Date()
     ), feedViewModel: FeedViewModel())

@@ -16,7 +16,7 @@ class CreatePostManager: ObservableObject {
             user_id: userID,
             thumbnail_url: nil,
             user_scanned_item: nil,
-            generated_image: nil,
+            generated_images: nil,
             likes: 0,
             created_at: Date()
         )
