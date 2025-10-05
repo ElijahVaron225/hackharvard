@@ -88,7 +88,12 @@ struct SignUpView: View {
                         Task { await signUp() }
                     } label: {
                         HStack {
-                            if isLoading { ProgressView().padding(.trailing, 8) }
+                            if isLoading { 
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .background))
+                                    .scaleEffect(0.8)
+                                    .padding(.trailing, 8) 
+                            }
                             Text("Sign Up")
                                 .font(.headline)
                         }

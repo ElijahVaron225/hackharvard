@@ -10,42 +10,83 @@ struct LoginView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
-                Text("Login")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
+            ZStack {
+                // Background color
+                Color.background
+                    .ignoresSafeArea()
 
-                TextField("Email", text: $email)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.emailAddress)
+                VStack(spacing: 24) {
+                    // Title
+                    Text("Login")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                        .foregroundColor(.text)
 
-                SecureField("Password", text: $password)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    VStack(spacing: 16) {
+                        // Email field
+                        TextField("Email", text: $email)
+                            .foregroundColor(.text)
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.emailAddress)
+                            .padding()
+                            .background(Color.secondBackground)
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.primary.opacity(0.3), lineWidth: 1)
+                            )
 
-                if let errorMessage {
-                    Text(errorMessage)
-                        .foregroundColor(.red)
-                        .font(.footnote)
-                        .multilineTextAlignment(.center)
-                }
-
-                Button("Login") {
-                    Task {
-                        await signInAndMaybeNavigate()
+                        // Password field
+                        SecureField("Password", text: $password)
+                            .foregroundColor(.text)
+                            .padding()
+                            .background(Color.secondBackground)
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.primary.opacity(0.3), lineWidth: 1)
+                            )
                     }
-                }
-                .buttonStyle(.borderedProminent)
+                    .tint(.text)
 
+                    // Error (if any)
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .foregroundColor(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, -8)
+                    }
+
+                    // Login button
+                    Button {
+                        Task {
+                            await signInAndMaybeNavigate()
+                        }
+                    } label: {
+                        Text("Login")
+                            .font(.headline)
+                            .foregroundColor(.background)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.primary)
+                            .cornerRadius(8)
+                    }
+                    .padding(.top, 8)
+                }
+                .padding(32)
+                .background(Color.white)
+                .cornerRadius(16)
+                .shadow(color: Color.black.opacity(0.1), radius: 20, x: 0, y: 10)
+                .padding(.horizontal, 24)
             }
-            .padding()
-            .background(Color.white)
-            .cornerRadius(10)
-            .shadow(radius: 10)
-            .padding()
-            .background(Color.black.opacity(0.5))
-            .cornerRadius(10)
-            .shadow(radius: 10)
+            .onAppear {
+                // Set placeholder text color globally
+                UITextField.appearance().attributedPlaceholder = NSAttributedString(
+                    string: "",
+                    attributes: [.foregroundColor: UIColor(Color.text.opacity(0.5))]
+                )
+            }
             .navigationDestination(isPresented: $goToContext) {
                 ContentView()   // push regardless of email verification, see logic below
             }
