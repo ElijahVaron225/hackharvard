@@ -237,6 +237,8 @@ struct ARViewContainer: UIViewRepresentable {
             stopInertia()
             stopOrientationObservers()
             stopDeviceMotion()
+            weightAnimation?.invalidate()
+            weightAnimation = nil
             NotificationCenter.default.removeObserver(self)
         }
         
@@ -307,14 +309,15 @@ struct ARViewContainer: UIViewRepresentable {
             let relativeAttitude = motion.attitude.multiply(byInverseOf: referenceAttitude!)
             
             // Extract yaw and pitch (ignore roll to avoid horizon tilt)
-            let quaternion = relativeAttitude.quaternion
-            let yaw = atan2(2 * (quaternion.w * quaternion.z + quaternion.x * quaternion.y),
-                           1 - 2 * (quaternion.y * quaternion.y + quaternion.z * quaternion.z))
-            let pitch = asin(2 * (quaternion.w * quaternion.y - quaternion.z * quaternion.x))
+            // CoreMotion quaternion: CMQuaternion(x, y, z, w)
+            let cmQuat = relativeAttitude.quaternion
+            let yaw: Float = atan2(2 * (cmQuat.w * cmQuat.z + cmQuat.x * cmQuat.y),
+                                  1 - 2 * (cmQuat.y * cmQuat.y + cmQuat.z * cmQuat.z))
+            let pitch: Float = asin(2 * (cmQuat.w * cmQuat.y - cmQuat.z * cmQuat.x))
             
             // Apply sensitivity and dead zone
-            let scaledYaw = yaw * motionSensitivity
-            let scaledPitch = pitch * motionSensitivity
+            let scaledYaw: Float = yaw * motionSensitivity
+            let scaledPitch: Float = pitch * motionSensitivity
             
             // Apply dead zone
             if abs(scaledYaw) < motionDeadZone && abs(scaledPitch) < motionDeadZone {
@@ -331,15 +334,15 @@ struct ARViewContainer: UIViewRepresentable {
         
         private func updateCameraWithMotion() {
             // Combine device motion with drag offset
-            let combinedYaw = deviceMotionYaw + yaw
-            let combinedPitch = deviceMotionPitch + pitch
+            let combinedYaw: Float = deviceMotionYaw + yaw
+            let combinedPitch: Float = deviceMotionPitch + pitch
             
             // Clamp pitch
-            let clampedPitch = max(minPitch, min(maxPitch, combinedPitch))
+            let clampedPitch: Float = max(minPitch, min(maxPitch, combinedPitch))
             
             // Apply weight based on drag state
-            let finalYaw = isDragging ? yaw + (deviceMotionYaw * deviceMotionWeight) : combinedYaw
-            let finalPitch = isDragging ? pitch + (deviceMotionPitch * deviceMotionWeight) : clampedPitch
+            let finalYaw: Float = isDragging ? yaw + (deviceMotionYaw * deviceMotionWeight) : combinedYaw
+            let finalPitch: Float = isDragging ? pitch + (deviceMotionPitch * deviceMotionWeight) : clampedPitch
             
             updateCamera(yaw: finalYaw, pitch: finalPitch)
         }
@@ -482,40 +485,44 @@ struct ARViewContainer: UIViewRepresentable {
         }
         
         // MARK: Device Motion Weight Animation
+        private var weightAnimation: CADisplayLink?
+        private var animationStartWeight: Float = 0
+        private var animationTargetWeight: Float = 0
+        private var animationStartTime: TimeInterval = 0
+        private var animationDuration: TimeInterval = 0
+        
         private func animateDeviceMotionWeight(to targetWeight: Float, duration: TimeInterval) {
-            let startWeight = deviceMotionWeight
-            let startTime = CACurrentMediaTime()
+            // Stop any existing animation
+            weightAnimation?.invalidate()
             
+            // Set up new animation
+            animationStartWeight = deviceMotionWeight
+            animationTargetWeight = targetWeight
+            animationStartTime = CACurrentMediaTime()
+            animationDuration = duration
+            
+            // Create and start display link
             let animation = CADisplayLink(target: self, selector: #selector(updateDeviceMotionWeight(_:)))
             animation.add(to: .main, forMode: .common)
-            
-            // Store animation state
-            objc_setAssociatedObject(self, "animation", animation, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-            objc_setAssociatedObject(self, "startWeight", startWeight, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-            objc_setAssociatedObject(self, "targetWeight", targetWeight, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-            objc_setAssociatedObject(self, "startTime", startTime, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-            objc_setAssociatedObject(self, "duration", duration, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            weightAnimation = animation
         }
         
         @objc private func updateDeviceMotionWeight(_ link: CADisplayLink) {
-            guard let startWeight = objc_getAssociatedObject(self, "startWeight") as? Float,
-                  let targetWeight = objc_getAssociatedObject(self, "targetWeight") as? Float,
-                  let startTime = objc_getAssociatedObject(self, "startTime") as? TimeInterval,
-                  let duration = objc_getAssociatedObject(self, "duration") as? TimeInterval else {
-                link.invalidate()
-                return
-            }
-            
-            let elapsed = CACurrentMediaTime() - startTime
-            let progress = min(1.0, elapsed / duration)
+            let currentTime: TimeInterval = CACurrentMediaTime()
+            let elapsed: TimeInterval = currentTime - animationStartTime
+            let progress: Double = min(1.0, elapsed / animationDuration)
             
             // Ease out cubic
-            let easedProgress = 1.0 - pow(1.0 - progress, 3.0)
-            deviceMotionWeight = startWeight + (targetWeight - startWeight) * Float(easedProgress)
+            let easedProgress: Double = 1.0 - pow(1.0 - progress, 3.0)
+            let easedFloat: Float = Float(easedProgress)
+            
+            // Interpolate weight
+            let weightDelta: Float = animationTargetWeight - animationStartWeight
+            deviceMotionWeight = animationStartWeight + (weightDelta * easedFloat)
             
             if progress >= 1.0 {
                 link.invalidate()
-                objc_setAssociatedObject(self, "animation", nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+                weightAnimation = nil
             }
         }
         
@@ -580,9 +587,16 @@ struct ARViewContainer: UIViewRepresentable {
         private func updateCamera(yaw: Float, pitch: Float) {
             guard let arView = arView,
                   let cameraAnchor = arView.scene.anchors.first(where: { $0.name == "camera" }) else { return }
-            let qYaw   = simd_quatf(angle: yaw,   axis: SIMD3<Float>(0, 1, 0)) // world Y
-            let qPitch = simd_quatf(angle: pitch, axis: SIMD3<Float>(1, 0, 0)) // local X
-            cameraAnchor.orientation = simd_normalize(qYaw * qPitch)
+            
+            // Create quaternions for yaw and pitch rotations
+            let qYaw: simd_quatf = simd_quatf(angle: yaw, axis: SIMD3<Float>(0, 1, 0)) // world Y
+            let qPitch: simd_quatf = simd_quatf(angle: pitch, axis: SIMD3<Float>(1, 0, 0)) // local X
+            
+            // Compose rotations: yaw first, then pitch (consistent with existing drag behavior)
+            let composedRotation: simd_quatf = simd_normalize(qYaw * qPitch)
+            
+            // Update camera anchor orientation
+            cameraAnchor.orientation = composedRotation
         }
         
         func loadAssets(in arView: ARView, experience: Experience) {
