@@ -21,7 +21,7 @@ class CreatePostManager: ObservableObject {
             created_at: Date()
         )
 
-        let url = URL(string: "http://127.0.0.1:8080/api/v1/supabase/create-post")!
+        let url = URL(string: "https://hackharvard-u5gt.onrender.com/api/v1/supabase/create-post")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -58,6 +58,35 @@ class CreatePostManager: ObservableObject {
         } catch {
             print("CreatePost error: \(error)")
             throw error
+        }
+    }
+
+    func updatePost(post: Post) async throws {
+        guard let userID = Auth.shared.userID else {
+            throw CreatePostError.noUser
+        }
+
+        let url = URL(string: "https://hackharvard-u5gt.onrender.com/api/v1/supabase/update-post")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        request.httpBody = try encoder.encode(post)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200..<300).contains(httpResponse.statusCode) else {
+            let errorBody = String(data: data, encoding: .utf8) ?? "No error details"
+            throw CreatePostError.serverError(httpResponse?.statusCode ?? 0, errorBody)
+        }
+
+        print("Post updated successfully: \(String(data: data, encoding: .utf8) ?? "No data")")
+
+        await MainActor.run {
+            self.post = post
         }
     }
 }

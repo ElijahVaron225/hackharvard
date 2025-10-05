@@ -278,6 +278,25 @@ async def get_posts() -> List[Dict[str, any]]:
     except Exception as e:
         return []
 
+async def update_post(post: Post) -> Dict[str, Any]:
+    """
+    Update a post
+    """
+    try:
+        client = get_client()
+        response = client.table("posts").update(post).eq("id", value=post.id).execute()
+        return {
+            "success": True,
+            "post_id": post.id,
+            "response": response
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "bucket": "posts"
+        }
+
 
 async def add_usdz_to_bucket(usdz_file_path: str, file_name: str = None) -> Dict[str, Any]:
     """
