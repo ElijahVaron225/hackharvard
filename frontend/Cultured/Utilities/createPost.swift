@@ -77,11 +77,14 @@ class CreatePostManager: ObservableObject {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200..<300).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
             let errorBody = String(data: data, encoding: .utf8) ?? "No error details"
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-            throw CreatePostError.serverError(statusCode, errorBody)
+            throw CreatePostError.serverError(0, errorBody)
+        }
+        
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            let errorBody = String(data: data, encoding: .utf8) ?? "No error details"
+            throw CreatePostError.serverError(httpResponse.statusCode, errorBody)
         }
 
         print("Post updated successfully: \(String(data: data, encoding: .utf8) ?? "No data")")
