@@ -266,5 +266,26 @@ async def create_post_empty(post: Post) -> Dict[str, Any]:
             "error": str(e),
             "bucket": "posts"
         }
+        
 
+
+async def get_posts() -> List[Dict[str, any]]:
+    """Gets all posts"""
+    try:
+        client: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+        response = client.table("posts").select("*").execute()
+
+        return response.data
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "table": "posts"
+        }
+        
+
+        
+    
+    
 
