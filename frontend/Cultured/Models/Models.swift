@@ -9,6 +9,15 @@ struct Experience: Identifiable, Codable {
     let userStory: String
 }
 
+struct Post: Identifiable, Codable {
+    let id: String
+    let user_id: String
+    let thumbnail_url: String
+    let user_scanned_item: String
+    let generated_image: String
+    let created_at: String
+}
+
 extension Experience {
     static let testExperience = Experience(
         id: "test_001",
