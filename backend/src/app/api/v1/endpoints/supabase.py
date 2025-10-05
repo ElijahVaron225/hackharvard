@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from app.utils.supabase import list_buckets, add_url_to_generated_images_bucket, add_url_to_thumbnails_bucket, get_generated_image_url, list_generated_images, list_thumbnails
+from app.utils.supabase import list_buckets, add_url_to_generated_images_bucket, add_url_to_thumbnails_bucket, get_generated_image_url, list_generated_images, list_thumbnails, create_post_empty
 from app.core.config import settings
 
 router = APIRouter()
@@ -80,6 +80,15 @@ def get_generated_images():
         result = list_generated_images()
         if not result["success"]:
             raise HTTPException(status_code=500, detail=result["error"])
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/create-post")
+async def create_post(request: Post):
+    """Create a post"""
+    try:
+        result = await create_post_empty(request)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
