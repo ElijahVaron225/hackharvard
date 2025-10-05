@@ -12,6 +12,7 @@
 		4F7E57C02E917965006027E9 /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = 4F7E57BF2E917965006027E9 /* PostgREST */; };
 		4F7E57C22E917965006027E9 /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = 4F7E57C12E917965006027E9 /* Realtime */; };
 		4F7E57C42E917965006027E9 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = 4F7E57C32E917965006027E9 /* Storage */; };
+		828241262E91EC8A008085A6 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 828241252E91EC8A008085A6 /* Supabase */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -33,6 +34,7 @@
 			files = (
 				4F7E57C02E917965006027E9 /* PostgREST in Frameworks */,
 				4F7E57BE2E917965006027E9 /* Functions in Frameworks */,
+				828241262E91EC8A008085A6 /* Supabase in Frameworks */,
 				4F7E57BC2E917965006027E9 /* Auth in Frameworks */,
 				4F7E57C42E917965006027E9 /* Storage in Frameworks */,
 				4F7E57C22E917965006027E9 /* Realtime in Frameworks */,
@@ -46,6 +48,7 @@
 			isa = PBXGroup;
 			children = (
 				4F944F742E91072F00B38676 /* Cultured */,
+				828241242E91EC8A008085A6 /* Frameworks */,
 				4F944F732E91072F00B38676 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -56,6 +59,13 @@
 				4F944F722E91072F00B38676 /* Cultured.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		828241242E91EC8A008085A6 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -89,6 +99,7 @@
 				4F7E57BF2E917965006027E9 /* PostgREST */,
 				4F7E57C12E917965006027E9 /* Realtime */,
 				4F7E57C32E917965006027E9 /* Storage */,
+				828241252E91EC8A008085A6 /* Supabase */,
 			);
 			productName = Cultured;
 			productReference = 4F944F722E91072F00B38676 /* Cultured.app */;
@@ -300,11 +311,13 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = Y2P4D3N37L;
+				DEVELOPMENT_TEAM = SMRQFTXVMF;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
+				INFOPLIST_KEY_NSCameraUsageDescription = "amera access is used to record try-on videos.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -320,7 +333,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = sioahiofsaidoa;
+				PRODUCT_BUNDLE_IDENTIFIER = nathaniscool;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
@@ -343,11 +356,13 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = Y2P4D3N37L;
+				DEVELOPMENT_TEAM = SMRQFTXVMF;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
+				INFOPLIST_KEY_NSCameraUsageDescription = "amera access is used to record try-on videos.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -363,7 +378,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = sioahiofsaidoa;
+				PRODUCT_BUNDLE_IDENTIFIER = nathaniscool;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
@@ -465,6 +480,11 @@
 			productName = Storage;
 		};
 		4F7E58012E917D60006027E9 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4F7E57BA2E917965006027E9 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+		828241252E91EC8A008085A6 /* Supabase */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 4F7E57BA2E917965006027E9 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Supabase;
