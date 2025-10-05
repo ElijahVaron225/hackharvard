@@ -80,7 +80,8 @@ class CreatePostManager: ObservableObject {
         guard let httpResponse = response as? HTTPURLResponse,
               (200..<300).contains(httpResponse.statusCode) else {
             let errorBody = String(data: data, encoding: .utf8) ?? "No error details"
-            throw CreatePostError.serverError(httpResponse?.statusCode ?? 0, errorBody)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            throw CreatePostError.serverError(statusCode, errorBody)
         }
 
         print("Post updated successfully: \(String(data: data, encoding: .utf8) ?? "No data")")

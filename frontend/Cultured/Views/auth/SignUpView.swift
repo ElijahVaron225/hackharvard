@@ -1,5 +1,4 @@
 import SwiftUI
-import Auth
 
 struct SignUpView: View {
     @State private var email = ""

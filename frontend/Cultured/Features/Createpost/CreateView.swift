@@ -3,6 +3,7 @@ import SwiftUI
 struct CreateView: View {
     @State private var userInput: String = ""
     @State private var interpretedText: String = ""
+    @State private var showLogin = false
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
@@ -66,10 +67,19 @@ struct CreateView: View {
                 }
             }
         }
+        .sheet(isPresented: $showLogin) {
+            LoginView()
+        }
     }
     
     // MARK: - Interpret & Send
     func interpretParagraph() {
+        // Check if user is logged in first
+        guard Auth.shared.userID != nil else {
+            showLogin = true
+            return
+        }
+        
         guard !userInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             interpretedText = "Please enter some text first."
             return
@@ -82,8 +92,18 @@ struct CreateView: View {
         // Update UI immediately
         interpretedText = analysis.formattedOutput
         
-        // Call backend
-        callBackendAPI(with: analysis)
+        // First create a post, then call backend to generate content
+        Task {
+            do {
+                try await CreatePostManager.shared.createPost()
+                callBackendAPI(with: analysis, userInput: userInput)
+            } catch {
+                print("❌ Error creating post: \(error)")
+                DispatchQueue.main.async {
+                    interpretedText = "Error creating post: \(error.localizedDescription)"
+                }
+            }
+        }
     }
     
     // MARK: - Backend API Call
@@ -91,7 +111,7 @@ struct CreateView: View {
         let text: String      // <-- rename to whatever your API expects
     }
     
-    func callBackendAPI(with analysis: TextAnalysis) {
+    func callBackendAPI(with analysis: TextAnalysis, userInput: String) {
         guard let url = URL(string: "https://hackharvard-u5gt.onrender.com/api/v1/api/prompts/workflow") else {
             print("❌ Invalid URL")
             return
@@ -161,9 +181,22 @@ struct CreateView: View {
                         print("☁️ Supabase Thumbnail URL: \(supabaseThumbnail ?? "nil")")
                         print("🆔 Generation ID: \(generationId ?? "nil")")
                         
-                        // TODO: Now you can use these URLs to update your Post
-                        // You can call CreatePostManager.shared.updatePost() with these URLs
-                        CreatePostManager.shared.updatePost(post: Post(post_id: generationId, user_id: userID, thumbnail_url: supabaseThumbnail, user_scanned_item: "", generated_images: fileUrl, likes: 0, created_at: Date()))
+                        // Update the existing post with generated content
+                        if let existingPost = CreatePostManager.shared.post {
+                            var updatedPost = existingPost
+                            updatedPost.thumbnail_url = supabaseThumbnail
+                            updatedPost.user_scanned_item = userInput
+                            updatedPost.generated_images = fileUrl
+                            
+                            Task {
+                                do {
+                                    try await CreatePostManager.shared.updatePost(post: updatedPost)
+                                    print("✅ Post updated successfully with generated content")
+                                } catch {
+                                    print("❌ Error updating post: \(error)")
+                                }
+                            }
+                        }
                         
                         // Dismiss the view and return to ContentView
                         dismiss()

@@ -64,8 +64,9 @@ final class Auth: ObservableObject {
 
     // Sign in with email/password, then load the profile row into self.user
     func signIn(email: String, password: String) async throws {
+        print("🔐 Attempting to sign in with email: \(email)")
         let response = try await supabase.auth.signIn(email: email, password: password) // Auth call [web:88]
-        print(response)
+        print("✅ Supabase auth response: \(response)")
 
         // Fetch the matching public users row by auth user id (uuid string)
         let authUserId = response.user.id.uuidString  // current SDK User.id is UUID [web:88][web:99]
