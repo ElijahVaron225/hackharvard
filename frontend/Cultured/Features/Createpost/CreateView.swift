@@ -96,7 +96,9 @@ struct CreateView: View {
         Task {
             do {
                 try await CreatePostManager.shared.createPost()
-                callBackendAPI(with: analysis, userInput: userInput)
+                // Get the post_id from the created post
+                let postId = CreatePostManager.shared.post?.id
+                callBackendAPI(with: analysis, userInput: userInput, postId: postId)
             } catch {
                 print("❌ Error creating post: \(error)")
                 DispatchQueue.main.async {
@@ -108,10 +110,11 @@ struct CreateView: View {
     
     // MARK: - Backend API Call
     struct RequestPayload: Encodable {
-        let text: String      // <-- rename to whatever your API expects
+        let text: String
+        let post_id: String?
     }
     
-    func callBackendAPI(with analysis: TextAnalysis, userInput: String) {
+    func callBackendAPI(with analysis: TextAnalysis, userInput: String, postId: String?) {
         guard let url = URL(string: "https://hackharvard-u5gt.onrender.com/api/v1/api/prompts/workflow") else {
             print("❌ Invalid URL")
             return
@@ -125,7 +128,9 @@ struct CreateView: View {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         
         // Build a proper JSON object payload (top-level dictionary)
-        let payload = RequestPayload(text: analysis.formattedOutput)
+        let payload = RequestPayload(text: analysis.formattedOutput, post_id: postId)
+        
+        print("📤 Sending workflow request with post_id: \(postId ?? "nil")")
         
         // Encode with JSONEncoder (handles dates etc if you add them later)
         do {
