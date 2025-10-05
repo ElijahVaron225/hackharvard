@@ -187,24 +187,24 @@ struct ARViewContainer: UIViewRepresentable {
         // Gyro axis mapping tunables
         private let yawSign: Float = -1 // invert left/right so turning left pans left
         private let pitchSign: Float = 1 // keep pitch as-is unless we need to flip later
-        private let yawSensitivity: Float = 0.60 // more responsive yaw
-        private let pitchSensitivity: Float = 0.52 // more responsive pitch
-        private let deadZone: Float = 0.010 // radians ≈ 0.57° (smaller dead zone)
+        private let yawSensitivity: Float = 0.85 // increased responsiveness (+42%)
+        private let pitchSensitivity: Float = 0.68 // increased responsiveness (+31%)
+        private let deadZone: Float = 0.008 // radians ≈ 0.46° (reduced by 20%)
         
-        // Time-constant smoothing parameters
-        private let tauYaw: Float = 0.22 // time constant for yaw smoothing (seconds)
-        private let tauPitch: Float = 0.25 // time constant for pitch smoothing (seconds)
+        // Time-constant smoothing parameters (more responsive)
+        private let tauYaw: Float = 0.17 // time constant for yaw smoothing (seconds, -23%)
+        private let tauPitch: Float = 0.20 // time constant for pitch smoothing (seconds, -20%)
         
         // Spike rejection thresholds
         private let spikeThresholdYaw: Float = 1.0 // radians
         private let spikeThresholdPitch: Float = 0.6 // radians
         
-        // Slew-rate limiting
-        private let maxYawStepPerSec: Float = 2.2 // rad/s
-        private let maxPitchStepPerSec: Float = 1.8 // rad/s
+        // Slew-rate limiting (allow quicker turns)
+        private let maxYawStepPerSec: Float = 2.9 // rad/s (+32%)
+        private let maxPitchStepPerSec: Float = 2.25 // rad/s (+25%)
         
-        // Quaternion slerp safety
-        private let maxAnglePerSec: Float = 2.5 // rad/s
+        // Quaternion slerp safety (slightly more responsive)
+        private let maxAnglePerSec: Float = 3.1 // rad/s (+24%)
         
         // Ramp-up state for first-tilt jump prevention
         private var rampUpProgress: Float = 0.0
