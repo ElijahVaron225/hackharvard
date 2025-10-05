@@ -91,3 +91,15 @@ class KiriModelZipResponse(BaseModel):
     data: dict
     message: str
     success: bool
+
+
+class Post(BaseModel):
+    """Post model for storing user posts."""
+    id: Optional[str] = Field(None, description="Unique post identifier")
+    user_id: str = Field(..., description="ID of the user who created the post")
+    title: Optional[str] = Field(None, description="Post title")
+    content: Optional[str] = Field(None, description="Post content")
+    image_url: Optional[str] = Field(None, description="URL of the post image")
+    thumbnail_url: Optional[str] = Field(None, description="URL of the post thumbnail")
+    created_at: Optional[str] = Field(None, description="Post creation timestamp")
+    updated_at: Optional[str] = Field(None, description="Post last update timestamp")

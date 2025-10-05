@@ -13,7 +13,7 @@ def get_gemini():
     return {"status": "ok"}
 
 @router.post("/chat")
-def chat_with_gemini(request: ChatRequest):
+def chat_with_gemini(request: str):
     try:
         # Get the path to the prompt file
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -23,14 +23,14 @@ def chat_with_gemini(request: ChatRequest):
         system_prompt = load_prompt_file(prompt_file_path)
         
         # Combine system prompt with user message
-        full_prompt = f"{system_prompt}\n\n{request.message}"
+        full_prompt = f"{system_prompt}\n\n{request}"
         
         # Check if API key is available
         if not os.getenv("GEMINI_API_KEY"):
             # Return mock response for testing
             return {
                 "message": "Prompt (4 phrases): indoors ground view living room with fireplace, bookshelf, front 0° fireplace, left bookshelf right couch back 180° wall, sunlit afternoon no people, asymmetric layout limited duplicates\nNegative (4 phrases): outdoors, focal at 180° or multiple centers reflections tiling swapped left right, >3 identical objects overlap clipping blurry unreadable text, laptops neon guessed brands",
-                "user_message": request.message,
+                "user_message": request,
                 "system_prompt_used": system_prompt[:100] + "..." if len(system_prompt) > 100 else system_prompt,
                 "note": "Mock response - GEMINI_API_KEY not set"
             }

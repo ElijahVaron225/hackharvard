@@ -1,7 +1,9 @@
 # Import the supabase creds from the config
 import time
+import uuid
 import httpx
 from app.core.config import settings
+from app.models import Post
 from supabase import create_client, Client
 from typing import List, Dict, Any
 
@@ -245,5 +247,46 @@ def get_generated_image_url(file_name: str) -> Dict[str, Any]:
             "bucket": "generated_images"
         }
 
+async def create_post_empty(post: Post) -> Dict[str, Any]:
+    """
+    Create a post
+    """
+    try:
+        print(f"DEBUG: Creating post: {post}")
+        client = get_client()
+        post_id = str(uuid.uuid4())
+        response = client.from_("posts").insert({"id": post_id, "user_id": post.user_id}).execute()
+        return {
+            "success": True,
+            "post_id": post_id,
+            "response": response
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "bucket": "posts"
+        }
+        
 
+
+async def get_posts() -> List[Dict[str, any]]:
+    """Gets all posts"""
+    try:
+        client: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+        response = client.table("posts").select("*").execute()
+
+        return response.data
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "table": "posts"
+        }
+        
+
+        
+    
+    
 

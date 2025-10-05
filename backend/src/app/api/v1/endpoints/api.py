@@ -8,12 +8,26 @@ router = APIRouter(prefix="/prompts", tags=["prompts"])
 
 
 
+class WorkflowRequest(BaseModel):
+    request: str = Field(..., description="The user's request/prompt")
+
 @router.post("/workflow", tags=["workflow"])
-async def workflow(request):
+async def workflow(request: str):
     try:
-        prompt = chat_with_gemini(request)
-        send_prompt = await send_prompt(prompt)
-        return send_prompt
+        # Create a ChatRequest object from the workflow request
+        from app.api.v1.endpoints.gemini import ChatRequest
+        chat_request = ChatRequest(message=request)
+        
+        # Get the prompt from Gemini
+        gemini_response = chat_with_gemini(chat_request)
+        
+        # Extract the message from Gemini response and create SendPromptRequest
+        prompt_text = gemini_response.get("message", request)
+        send_prompt_request = SendPromptRequest(prompt=prompt_text)
+        
+        # Send the prompt for skybox generation
+        result = await send_prompt(send_prompt_request)
+        return result
     except Exception as e:
         print(f"💥 Error in workflow: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
