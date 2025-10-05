@@ -2,17 +2,65 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var showCreateView = false
+    @State private var animateGradient = false
     
     var body: some View {
         NavigationStack {
             ZStack {
-                // Modern gradient background using global colors
-                LinearGradient(
-                    colors: [Color.background, Color.background.opacity(0.95)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                // Liquid glass background with animated gradients
+                ZStack {
+                    // Base warm cream background
+                    Color.background
+                        .ignoresSafeArea()
+                    
+                    // Animated liquid glass effect
+                    LinearGradient(
+                        colors: [
+                            Color.primary.opacity(0.1),
+                            Color.primary.opacity(0.05),
+                            Color.primary.opacity(0.08),
+                            Color.primary.opacity(0.03)
+                        ],
+                        startPoint: animateGradient ? .topLeading : .bottomTrailing,
+                        endPoint: animateGradient ? .bottomTrailing : .topLeading
+                    )
+                    .ignoresSafeArea()
+                    .animation(
+                        Animation.easeInOut(duration: 8)
+                            .repeatForever(autoreverses: true),
+                        value: animateGradient
+                    )
+                    
+                    // Secondary liquid layer
+                    LinearGradient(
+                        colors: [
+                            Color.primary.opacity(0.06),
+                            Color.clear,
+                            Color.primary.opacity(0.04),
+                            Color.clear
+                        ],
+                        startPoint: animateGradient ? .bottomLeading : .topTrailing,
+                        endPoint: animateGradient ? .topTrailing : .bottomLeading
+                    )
+                    .ignoresSafeArea()
+                    .animation(
+                        Animation.easeInOut(duration: 12)
+                            .repeatForever(autoreverses: true),
+                        value: animateGradient
+                    )
+                    
+                    // Subtle overlay for depth
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.1),
+                            Color.clear,
+                            Color.white.opacity(0.05)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .ignoresSafeArea()
+                }
                 
                 VStack(spacing: 0) {
                     // Subtle top divider with glass effect
@@ -36,12 +84,31 @@ struct ContentView: View {
                         .fill(Color.primary.opacity(0.1))
                         .frame(height: 0.5)
                     
+                    // Transparent footer that blends with liquid glass
                     BottomTabBar(
                         onHomeTap: {
                             // Navigate back to root - this will be handled by the NavigationStack
                         },
                         onCreateTap: {
                             showCreateView = true
+                        }
+                    )
+                    .background(
+                        ZStack {
+                            // Glassmorphism background for footer
+                            RoundedRectangle(cornerRadius: 0)
+                                .fill(Color.white.opacity(0.1))
+                            
+                            // Subtle border
+                            Rectangle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color.primary.opacity(0.2), Color.clear],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                                .frame(height: 1)
                         }
                     )
 
@@ -113,6 +180,9 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                 }
             }
+        }
+        .onAppear {
+            animateGradient = true
         }
         .fullScreenCover(isPresented: $showCreateView) {
             CreateView()
