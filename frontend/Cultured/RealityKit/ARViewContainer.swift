@@ -4,6 +4,7 @@ import RealityKit
 import Combine
 import QuartzCore
 import UIKit
+import CoreMotion
 
 // MARK: - Heirloom "card" builders (portable/compile-safe)
 
@@ -117,6 +118,7 @@ struct ARViewContainer: UIViewRepresentable {
         context.coordinator.loadAssets(in: arView, experience: experience)
         context.coordinator.applyFOVForCurrentOrientation()
         context.coordinator.startOrientationObservers()
+        context.coordinator.startDeviceMotion()
 
         // ------- Heirloom card preview (floating in front of camera) -------
         Task { @MainActor in
@@ -173,6 +175,17 @@ struct ARViewContainer: UIViewRepresentable {
         private let minPitch: Float = -89 * .pi / 180
         private let maxPitch: Float =  89 * .pi / 180
         
+        // Device motion control
+        private let motionManager = CMMotionManager()
+        private var referenceAttitude: CMAttitude?
+        private var deviceMotionYaw: Float = 0
+        private var deviceMotionPitch: Float = 0
+        private var isDeviceMotionEnabled = true
+        private var motionSensitivity: Float = 1.0
+        private var motionDeadZone: Float = 0.01 // rad
+        private var isDraggingDeviceMotion = false
+        private var deviceMotionWeight: Float = 1.0 // 0-1, reduced during drag
+        
         // Inertia (drag)
         private var velocityYaw:   Float = 0
         private var velocityPitch: Float = 0
@@ -214,12 +227,121 @@ struct ARViewContainer: UIViewRepresentable {
         
         init() {
             NotificationCenter.default.addObserver(self, selector: #selector(handleRecenter), name: .recenterCamera, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(handleToggleDeviceMotion), name: .toggleDeviceMotion, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(handleAppDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(handleAppWillEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
+            setupDeviceMotion()
         }
         
         deinit {
             stopInertia()
             stopOrientationObservers()
+            stopDeviceMotion()
             NotificationCenter.default.removeObserver(self)
+        }
+        
+        @objc private func handleAppDidEnterBackground() {
+            stopDeviceMotion()
+        }
+        
+        @objc private func handleAppWillEnterForeground() {
+            startDeviceMotion()
+        }
+        
+        @objc private func handleToggleDeviceMotion(_ notification: Notification) {
+            guard let isEnabled = notification.object as? Bool else { return }
+            isDeviceMotionEnabled = isEnabled
+            
+            if isEnabled {
+                startDeviceMotion()
+            } else {
+                stopDeviceMotion()
+            }
+        }
+        
+        // MARK: Device Motion
+        private func setupDeviceMotion() {
+            // Check if device motion is available
+            guard motionManager.isDeviceMotionAvailable else {
+                print("Device motion not available - disabling tilt control")
+                isDeviceMotionEnabled = false
+                return
+            }
+            
+            // Configure motion manager
+            motionManager.deviceMotionUpdateInterval = 1.0 / 60.0 // 60 Hz
+            motionManager.showsDeviceMovementDisplay = false
+            
+            // Auto-disable on simulator
+            #if targetEnvironment(simulator)
+            isDeviceMotionEnabled = false
+            print("Running on simulator - disabling device motion")
+            #endif
+        }
+        
+        func startDeviceMotion() {
+            guard isDeviceMotionEnabled, motionManager.isDeviceMotionAvailable, !motionManager.isDeviceMotionActive else { return }
+            
+            motionManager.startDeviceMotionUpdates(using: .xArbitraryCorrectedZVertical) { [weak self] motion, error in
+                guard let self = self, let motion = motion else { return }
+                
+                DispatchQueue.main.async {
+                    self.handleDeviceMotion(motion)
+                }
+            }
+        }
+        
+        func stopDeviceMotion() {
+            guard motionManager.isDeviceMotionActive else { return }
+            motionManager.stopDeviceMotionUpdates()
+        }
+        
+        private func handleDeviceMotion(_ motion: CMDeviceMotion) {
+            // Set reference attitude on first motion
+            if referenceAttitude == nil {
+                referenceAttitude = motion.attitude
+                return
+            }
+            
+            // Calculate relative attitude
+            let relativeAttitude = motion.attitude.multiply(byInverseOf: referenceAttitude!)
+            
+            // Extract yaw and pitch (ignore roll to avoid horizon tilt)
+            let quaternion = relativeAttitude.quaternion
+            let yaw = atan2(2 * (quaternion.w * quaternion.z + quaternion.x * quaternion.y),
+                           1 - 2 * (quaternion.y * quaternion.y + quaternion.z * quaternion.z))
+            let pitch = asin(2 * (quaternion.w * quaternion.y - quaternion.z * quaternion.x))
+            
+            // Apply sensitivity and dead zone
+            let scaledYaw = yaw * motionSensitivity
+            let scaledPitch = pitch * motionSensitivity
+            
+            // Apply dead zone
+            if abs(scaledYaw) < motionDeadZone && abs(scaledPitch) < motionDeadZone {
+                return
+            }
+            
+            // Update device motion values
+            deviceMotionYaw = scaledYaw
+            deviceMotionPitch = scaledPitch
+            
+            // Update camera with combined motion
+            updateCameraWithMotion()
+        }
+        
+        private func updateCameraWithMotion() {
+            // Combine device motion with drag offset
+            let combinedYaw = deviceMotionYaw + yaw
+            let combinedPitch = deviceMotionPitch + pitch
+            
+            // Clamp pitch
+            let clampedPitch = max(minPitch, min(maxPitch, combinedPitch))
+            
+            // Apply weight based on drag state
+            let finalYaw = isDragging ? yaw + (deviceMotionYaw * deviceMotionWeight) : combinedYaw
+            let finalPitch = isDragging ? pitch + (deviceMotionPitch * deviceMotionWeight) : clampedPitch
+            
+            updateCamera(yaw: finalYaw, pitch: finalPitch)
         }
         
         // MARK: Orientation/FOV
@@ -279,7 +401,10 @@ struct ARViewContainer: UIViewRepresentable {
             switch g.state {
             case .began:
                 isDragging = true
+                isDraggingDeviceMotion = true
                 stopInertia()
+                // Gradually reduce device motion weight during drag
+                animateDeviceMotionWeight(to: 0.0, duration: 0.2)
             case .changed:
                 let t = g.translation(in: view)
                 // Resolution-independent mapping (~180° across each axis)
@@ -299,7 +424,10 @@ struct ARViewContainer: UIViewRepresentable {
                 velocityPitch = Float(v.y) * pitchPerPt
             case .ended, .cancelled, .failed:
                 isDragging = false
+                isDraggingDeviceMotion = false
                 startInertia()
+                // Gradually restore device motion weight after drag
+                animateDeviceMotionWeight(to: 1.0, duration: 0.3)
             default:
                 break
             }
@@ -347,7 +475,48 @@ struct ARViewContainer: UIViewRepresentable {
             stopInertia()
             yaw = 0
             pitch = 0
+            deviceMotionYaw = 0
+            deviceMotionPitch = 0
+            referenceAttitude = nil // Reset reference for next motion
             updateCamera(yaw: 0, pitch: 0)
+        }
+        
+        // MARK: Device Motion Weight Animation
+        private func animateDeviceMotionWeight(to targetWeight: Float, duration: TimeInterval) {
+            let startWeight = deviceMotionWeight
+            let startTime = CACurrentMediaTime()
+            
+            let animation = CADisplayLink(target: self, selector: #selector(updateDeviceMotionWeight(_:)))
+            animation.add(to: .main, forMode: .common)
+            
+            // Store animation state
+            objc_setAssociatedObject(self, "animation", animation, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            objc_setAssociatedObject(self, "startWeight", startWeight, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            objc_setAssociatedObject(self, "targetWeight", targetWeight, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            objc_setAssociatedObject(self, "startTime", startTime, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            objc_setAssociatedObject(self, "duration", duration, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
+        
+        @objc private func updateDeviceMotionWeight(_ link: CADisplayLink) {
+            guard let startWeight = objc_getAssociatedObject(self, "startWeight") as? Float,
+                  let targetWeight = objc_getAssociatedObject(self, "targetWeight") as? Float,
+                  let startTime = objc_getAssociatedObject(self, "startTime") as? TimeInterval,
+                  let duration = objc_getAssociatedObject(self, "duration") as? TimeInterval else {
+                link.invalidate()
+                return
+            }
+            
+            let elapsed = CACurrentMediaTime() - startTime
+            let progress = min(1.0, elapsed / duration)
+            
+            // Ease out cubic
+            let easedProgress = 1.0 - pow(1.0 - progress, 3.0)
+            deviceMotionWeight = startWeight + (targetWeight - startWeight) * Float(easedProgress)
+            
+            if progress >= 1.0 {
+                link.invalidate()
+                objc_setAssociatedObject(self, "animation", nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            }
         }
         
         // MARK: Pinch Zoom with Snap + Haptics
