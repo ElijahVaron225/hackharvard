@@ -185,13 +185,17 @@ struct ARViewContainer: UIViewRepresentable {
         private var deviceMotionWeight: Float = 1.0 // 0-1, reduced during drag
         
         // Gyro axis mapping tunables
-        private let yawSign: Float = -1 // flip if right tilt moves the camera the wrong way
-        private let pitchSign: Float = 1 // flip if up tilt moves the camera the wrong way
-        private let swapAxes = false // set true only if needed
-        private let yawSensitivity: Float = 0.55
-        private let pitchSensitivity: Float = 0.45
+        private let yawSign: Float = -1 // invert left/right so turning left pans left
+        private let pitchSign: Float = 1 // keep pitch as-is unless we need to flip later
+        private let yawSensitivity: Float = 0.45 // lower yaw sensitivity
+        private let pitchSensitivity: Float = 0.35 // lower pitch sensitivity
         private let deadZone: Float = 0.02 // radians ≈ 1.1°
         private let smoothingAlpha: Float = 0.15 // low-pass filter strength
+        
+        // Debug flag for testing
+        #if DEBUG
+        private let debugMotion = false // set to true to print yaw/pitch values
+        #endif
         
         // Smoothed motion state
         private var smoothedYaw: Float = 0
@@ -322,53 +326,80 @@ struct ARViewContainer: UIViewRepresentable {
             var rel: CMAttitude = motion.attitude
             rel.multiply(byInverseOf: referenceAttitude!)
             
-            // Extract yaw and pitch (ignore roll to avoid horizon tilt)
-            // CoreMotion quaternion: CMQuaternion(x, y, z, w)
+            // Convert CoreMotion quaternion to rotation matrix for clean axis separation
             let cmQuat: CMQuaternion = rel.quaternion
-            
-            // Break up complex math to avoid type-checker timeouts
             let w: Float = Float(cmQuat.w)
             let x: Float = Float(cmQuat.x)
             let y: Float = Float(cmQuat.y)
             let z: Float = Float(cmQuat.z)
             
-            // Yaw calculation with explicit intermediate terms
-            let t0: Float = 2 * (w * z + x * y)
-            let t1: Float = 1 - 2 * (y * y + z * z)
-            let rawYaw: Float = atan2(t0, t1)
+            // Build rotation matrix from quaternion
+            let xx: Float = x * x
+            let yy: Float = y * y
+            let zz: Float = z * z
+            let ww: Float = w * w
+            let xy: Float = x * y
+            let xz: Float = x * z
+            let yz: Float = y * z
+            let wx: Float = w * x
+            let wy: Float = w * y
+            let wz: Float = w * z
             
-            // Pitch calculation with clamping
-            let t2: Float = 2 * (w * y - z * x)
-            let t2c: Float = max(-1.0 as Float, min(1.0 as Float, t2))
-            let rawPitch: Float = asin(t2c)
+            // Rotation matrix (row-major)
+            let m00: Float = ww + xx - yy - zz
+            let m01: Float = 2 * (xy - wz)
+            let m02: Float = 2 * (xz + wy)
+            let m10: Float = 2 * (xy + wz)
+            let m11: Float = ww - xx + yy - zz
+            let m12: Float = 2 * (yz - wx)
+            let m20: Float = 2 * (xz - wy)
+            let m21: Float = 2 * (yz + wx)
+            let m22: Float = ww - xx - yy + zz
             
-            // Apply axis mapping corrections
-            var yawAdj: Float = yawSign * rawYaw
-            var pitchAdj: Float = pitchSign * rawPitch
+            // Extract forward vector (Z-axis in device space, maps to -Z in world space)
+            let forwardX: Float = -m02
+            let forwardY: Float = -m12
+            let forwardZ: Float = -m22
             
-            // Swap axes if needed (currently not needed)
-            if swapAxes {
-                let temp = yawAdj
-                yawAdj = pitchAdj
-                pitchAdj = temp
-            }
+            // Compute yaw via horizontal projection (no pitch/roll bleed)
+            // Project forward vector onto horizontal plane (Y=0)
+            let horizontalX: Float = forwardX
+            let horizontalZ: Float = forwardZ
+            let rawYaw: Float = atan2(horizontalX, horizontalZ)
+            
+            // Compute pitch independently from forward vector's Y component
+            let forwardYClamped: Float = max(-1.0, min(1.0, forwardY))
+            let rawPitch: Float = asin(forwardYClamped)
+            
+            // Apply sign corrections
+            let yawAdj: Float = yawSign * rawYaw
+            let pitchAdj: Float = pitchSign * rawPitch
             
             // Apply sensitivity
-            yawAdj *= yawSensitivity
-            pitchAdj *= pitchSensitivity
+            let yawSens: Float = yawAdj * yawSensitivity
+            let pitchSens: Float = pitchAdj * pitchSensitivity
             
             // Apply dead zone
-            if abs(yawAdj) < deadZone && abs(pitchAdj) < deadZone {
+            if abs(yawSens) < deadZone && abs(pitchSens) < deadZone {
                 return
             }
             
             // Smooth the motion with low-pass filter
-            smoothedYaw = smoothedYaw + smoothingAlpha * (yawAdj - smoothedYaw)
-            smoothedPitch = smoothedPitch + smoothingAlpha * (pitchAdj - smoothedPitch)
+            smoothedYaw = smoothedYaw + smoothingAlpha * (yawSens - smoothedYaw)
+            smoothedPitch = smoothedPitch + smoothingAlpha * (pitchSens - smoothedPitch)
             
-            // Clamp pitch to avoid looking past the poles
+            // Clamp pitch to avoid looking past the poles (yaw remains unbounded)
             let maxPitchRad: Float = 75 * .pi / 180 // 75 degrees
             smoothedPitch = max(-maxPitchRad, min(maxPitchRad, smoothedPitch))
+            
+            // Debug output (compile-time flag)
+            #if DEBUG
+            if debugMotion {
+                let yawDeg: Float = smoothedYaw * 180 / .pi
+                let pitchDeg: Float = smoothedPitch * 180 / .pi
+                print("Yaw: \(yawDeg)°, Pitch: \(pitchDeg)°")
+            }
+            #endif
             
             // Update device motion values
             deviceMotionYaw = smoothedYaw
