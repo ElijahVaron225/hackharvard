@@ -60,6 +60,44 @@ final class Auth: ObservableObject {
             supabaseKey: supabaseKey
         )
         self.user = nil
+        
+        // Restore session on init
+        Task {
+            await restoreSession()
+        }
+    }
+    
+    // MARK: - Session Management
+    private func restoreSession() async {
+        do {
+            // This will either return a Session or throw an error if none
+            let session = try await supabase.auth.session
+            let currentUser = session.user
+            print("🔄 Restoring session for user: \(currentUser.id)")
+            await loadUserProfile(authUserId: currentUser.id.uuidString)
+        } catch {
+            print("⚠️ No existing session found: \(error)")
+        }
+    }
+
+    
+    private func loadUserProfile(authUserId: String) async {
+        do {
+            let fetched: User = try await supabase
+                .from("users")
+                .select()
+                .eq("id", value: authUserId)
+                .single()
+                .execute()
+                .value
+            
+            await MainActor.run {
+                self.user = fetched
+                print("✅ User profile restored: \(fetched.username)")
+            }
+        } catch {
+            print("❌ Failed to load user profile: \(error)")
+        }
     }
 
     // Sign in with email/password, then load the profile row into self.user
@@ -133,5 +171,17 @@ final class Auth: ObservableObject {
     func signOut() async throws {
         try await supabase.auth.signOut()                   // ends session [web:99]
         self.user = nil
+    }
+    
+    // MARK: - Session Validation
+    func ensureAuthenticated() async -> Bool {
+        // If we already have a user, we're good
+        if user != nil {
+            return true
+        }
+        
+        // Try to restore session
+        await restoreSession()
+        return user != nil
     }
 }

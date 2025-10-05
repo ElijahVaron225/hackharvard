@@ -75,16 +75,28 @@ struct CreateView: View {
     // MARK: - Interpret & Send
     func interpretParagraph() {
         // Check if user is logged in first
-        guard Auth.shared.userID != nil else {
-            showLogin = true
-            return
-        }
-        
         guard !userInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             interpretedText = "Please enter some text first."
             return
         }
         
+        // Validate authentication and try to restore session if needed
+        Task {
+            let isAuthenticated = await Auth.shared.ensureAuthenticated()
+            
+            await MainActor.run {
+                guard isAuthenticated else {
+                    showLogin = true
+                    return
+                }
+                
+                // Continue with the interpretation process
+                continueInterpretation()
+            }
+        }
+    }
+    
+    private func continueInterpretation() {
         // Use your existing types
         let interpreter = ParagraphInterpreter(text: userInput)
         let analysis = interpreter.analyze()

@@ -8,7 +8,9 @@ class CreatePostManager: ObservableObject {
     private init() {}
 
     func createPost() async throws {
-        guard let userID = Auth.shared.userID else {
+        // Ensure authentication is valid before proceeding
+        let isAuthenticated = await Auth.shared.ensureAuthenticated()
+        guard isAuthenticated, let userID = Auth.shared.userID else {
             throw CreatePostError.noUser
         }
 
@@ -62,7 +64,9 @@ class CreatePostManager: ObservableObject {
     }
 
     func updatePost(post: Post) async throws {
-        guard let userID = Auth.shared.userID else {
+        // Ensure authentication is valid before proceeding
+        let isAuthenticated = await Auth.shared.ensureAuthenticated()
+        guard isAuthenticated, let userID = Auth.shared.userID else {
             throw CreatePostError.noUser
         }
 

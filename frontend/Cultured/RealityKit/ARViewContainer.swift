@@ -444,25 +444,23 @@ struct ARViewContainer: UIViewRepresentable {
 
         // ------- Billboard card preview (floating in front of camera) -------
         Task { @MainActor in
-            // Try different image formats to avoid alpha channel issues
+            // Load user's processed heirloom image from the experience
             var img: UIImage?
             
-            // First try JPG (white background, no alpha channel issues)
-            if let jpgImg = UIImage(named: "testImage.jpg") {
-                img = jpgImg
-                print("✅ Using JPG image with white background")
-            }
-            // Fallback to solid background PNG
-            else if let solidImg = UIImage(named: "testImage_solid") {
-                img = solidImg
-                print("✅ Using solid background PNG image")
-            }
-            // Fallback to original PNG
-            else if let pngImg = UIImage(named: "testImage") {
-                img = pngImg
-                print("✅ Using original PNG image")
+            // Load from the experience's modelURL (which should be the processed heirloom)
+            if let modelURL = URL(string: experience.modelURL) {
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: modelURL)
+                    if let downloadedImage = UIImage(data: data) {
+                        img = downloadedImage
+                        print("✅ Using processed heirloom image from: \(experience.modelURL)")
+                    }
+                } catch {
+                    print("⚠️ Failed to load processed heirloom image: \(error)")
+                }
             }
             
+            // Only create the billboard if we have a valid image
             if let image = img {
                 do {
                     let card = try await makeBillboardCard(image: image)
@@ -480,7 +478,7 @@ struct ARViewContainer: UIViewRepresentable {
                     print("❌ Billboard card build failed: \(error)")
                 }
             } else {
-                print("⚠️ No test image found. Add 'testImage' to Assets.xcassets.")
+                print("⚠️ No processed heirloom image available. User needs to upload and process an image first.")
             }
         }
         // -------------------------------------------------------------------
