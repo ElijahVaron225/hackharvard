@@ -1,4 +1,5 @@
 import SwiftUI
+import RealityKit
 
 struct ExperienceView: View {
     let experience: Experience
@@ -37,10 +38,8 @@ struct ExperienceView: View {
                 
                 // Bottom controls
                 HStack(spacing: 20) {
-                    // Lock/Unlock button
-                    Button(action: {
-                        isRotationLocked.toggle()
-                    }) {
+                    // Lock/Unlock camera rotation
+                    Button(action: { isRotationLocked.toggle() }) {
                         Image(systemName: isRotationLocked ? "lock.fill" : "lock.open.fill")
                             .font(.system(size: 16))
                             .foregroundColor(.white)
@@ -49,9 +48,8 @@ struct ExperienceView: View {
                             .cornerRadius(20)
                     }
                     
-                    // Recenter button
+                    // Recenter camera
                     Button(action: {
-                        // Access coordinator through ARViewContainer
                         NotificationCenter.default.post(name: .recenterCamera, object: nil)
                     }) {
                         Image(systemName: "scope")

@@ -194,7 +194,6 @@ def list_generated_images() -> Dict[str, Any]:
         }
 
 
-
 def get_generated_image_url(file_name: str) -> Dict[str, Any]:
     """
     Get the public URL for a specific file in the generated_images bucket
@@ -269,7 +268,6 @@ async def create_post_empty(post: Post) -> Dict[str, Any]:
         }
         
 
-
 async def get_posts() -> List[Dict[str, any]]:
     """Gets all posts"""
     try:
@@ -277,16 +275,53 @@ async def get_posts() -> List[Dict[str, any]]:
         response = client.table("posts").select("*").execute()
 
         return response.data
+    except Exception as e:
+        return []
+
+
+async def add_usdz_to_bucket(usdz_file_path: str, file_name: str = None) -> Dict[str, Any]:
+    """
+    Upload a USDZ file to the user_scanned_items bucket
+    
+    Args:
+        usdz_file_path: Local path to the USDZ file
+        file_name: Optional custom filename for the USDZ file
         
+    Returns:
+        Dictionary with success status and file information
+    """
+    try:
+        import os
+        client = get_client()
+        
+        # If no file_name provided, use the filename from the path
+        if not file_name:
+            file_name = os.path.basename(usdz_file_path)
+        
+        # Read the USDZ file content
+        with open(usdz_file_path, 'rb') as f:
+            usdz_content = f.read()
+        
+        # Upload the USDZ file to the user_scanned_items bucket
+        upload_response = client.storage.from_("user_scanned_items").upload(
+            path=file_name,
+            file=usdz_content,
+            file_options={"content-type": "model/vnd.usdz+zip"}
+        )
+        
+        # Get the public URL for the uploaded file
+        public_url = client.storage.from_("user_scanned_items").get_public_url(file_name)
+        
+        return {
+            "success": True,
+            "bucket": "user_scanned_items",
+            "file_name": file_name,
+            "public_url": public_url,
+            "response": upload_response
+        }
     except Exception as e:
         return {
             "success": False,
             "error": str(e),
-            "table": "posts"
+            "bucket": "user_scanned_items"
         }
-        
-
-        
-    
-    
-

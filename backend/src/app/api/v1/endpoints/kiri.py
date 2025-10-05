@@ -1,245 +1,368 @@
-from __future__ import annotations
-
-from fastapi import APIRouter, HTTPException, status
+import os
+import httpx
+import asyncio
+import json
+import threading
+import time
+from fastapi import APIRouter, HTTPException
+from dotenv import load_dotenv
+from pydantic import BaseModel
 from typing import Optional
-from ....models import ScanRequest, ScanResponse, JobStatusResponse, JobResultResponse, JobStatus
-from ....kiri_client import kiri_client
-from ....store import job_store
-from ....service import start_job_polling
-from ....utils import validate_video_url
 import logging
 
-logger = logging.getLogger(__name__)
+# Load .env file
+load_dotenv()
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
+KIRI_ENGINE_KEY = os.getenv("KIRI_ENGINE_KEY")
 
-@router.post("/scan", response_model=ScanResponse, status_code=status.HTTP_201_CREATED)
-async def create_scan_job(request: ScanRequest) -> ScanResponse:
+class KiriEngineRequest(BaseModel):
+    url: str
+
+class KiriEngineResponse(BaseModel):
+    code: int
+    msg: str
+    data: dict
+    ok: bool
+
+class KiriScanResponse(BaseModel):
+    serialize: str
+    calculateType: int
+    status: str = "queued"
+
+class KiriStatusResponse(BaseModel):
+    serialize: str
+    status: int
+    message: str
+
+class KiriPollingRequest(BaseModel):
+    serialize: str
+
+class KiriDownloadRequest(BaseModel):
+    serialize: str
+    postId: str = None  # Optional post ID for tagging
+
+class KiriDownloadResponse(BaseModel):
+    usdzUrl: str
+
+@router.post("/scan", response_model=KiriScanResponse)
+async def scan_user_object(request: KiriEngineRequest):
     """
-    Create a new video scan job with Kiri Engine.
-    
-    Args:
-        request: Scan request containing video URL and parameters
-        
-    Returns:
-        ScanResponse with job ID and initial status
-        
-    Raises:
-        HTTPException: If request validation fails or job creation fails
-    """
-    try:
-        # Validate video URL
-        if not validate_video_url(request.videoUrl):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid video URL format"
-            )
-        
-        # Create job with Kiri Engine
-        logger.info(f"Creating Kiri job for video: {request.videoUrl}")
-        
-        kiri_response = await kiri_client.create_job(
-            video_url=request.videoUrl,
-            file_format=request.fileFormat,
-            model_quality=request.modelQuality.value,  # Convert enum to int
-            texture_quality=request.textureQuality.value,  # Convert enum to int
-            is_mask=request.isMask,
-            texture_smoothing=request.textureSmoothing,
-            additional_params=request.additionalParams
-        )
-        
-        if not kiri_response.success:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to create Kiri job: {kiri_response.message}"
-            )
-        
-        # Extract serialize parameter from response
-        kiri_serialize = kiri_response.data.get('serialize')
-        if not kiri_serialize:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Invalid response from Kiri Engine: missing serialize parameter"
-            )
-        
-        # Create job in our store
-        job_id = job_store.create_job(kiri_serialize)
-        
-        # Start background polling
-        await start_job_polling(job_id, kiri_serialize)
-        
-        logger.info(f"Successfully created scan job: {job_id}")
-        
-        return ScanResponse(
-            jobId=job_id,
-            status=JobStatus.QUEUED
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error creating scan job: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error while creating scan job"
-        )
-
-
-@router.get("/scan/{job_id}/status", response_model=JobStatusResponse)
-async def get_job_status(job_id: str) -> JobStatusResponse:
-    """
-    Get the current status of a scan job.
-    
-    Args:
-        job_id: Job identifier
-        
-    Returns:
-        JobStatusResponse with current status and optional error
-        
-    Raises:
-        HTTPException: If job not found
+    Upload a video to Kiri Engine for featureless object scanning.
     """
     try:
-        job = job_store.get_job(job_id)
-        if not job:
+        # Validate API key
+        if not KIRI_ENGINE_KEY:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Job not found"
+                status_code=500, 
+                detail="KIRI_ENGINE_KEY not configured"
             )
+        # Download video from Supabase URL
+        logger.info(f"Downloading video from: {request.url}")
         
-        return JobStatusResponse(
-            jobId=job_id,
-            status=job.status,
-            error=job.error
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error getting job status: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error while getting job status"
-        )
-
-
-@router.get("/scan/{job_id}/result", response_model=JobResultResponse)
-async def get_job_result(job_id: str) -> JobResultResponse:
-    """
-    Get the result of a completed scan job.
-    
-    Args:
-        job_id: Job identifier
-        
-    Returns:
-        JobResultResponse with status and USDZ URL if ready
-        
-    Raises:
-        HTTPException: If job not found or not ready
-    """
-    try:
-        job = job_store.get_job(job_id)
-        if not job:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Job not found"
+        async with httpx.AsyncClient() as client:
+            # Download the video file
+            video_response = await client.get(request.url)
+            video_response.raise_for_status()
+            video_content = video_response.content
+            
+            # Prepare form data for Kiri Engine API
+            files = {
+                'videoFile': ('video.mp4', video_content, 'video/mp4')
+            }
+            
+            data = {
+                'fileFormat': 'usdz'
+            }
+            
+            # Make request to Kiri Engine API
+            kiri_url = "https://api.kiriengine.app/api/v1/open/featureless/video"
+            headers = {
+                'Authorization': f'Bearer {KIRI_ENGINE_KEY}'
+            }
+            
+            logger.info(f"Submitting video to Kiri Engine: {kiri_url}")
+            
+            kiri_response = await client.post(
+                kiri_url,
+                headers=headers,
+                files=files,
+                data=data,
+                timeout=60.0
             )
-        
-        # If job is ready, return the result
-        if job.status == JobStatus.SUCCESS:
-            if not job.usdzUrl:
+            
+            kiri_response.raise_for_status()
+            response_data = kiri_response.json()
+            
+            logger.info(f"Kiri Engine response: {response_data}")
+            
+            # Validate response
+            if not response_data.get('ok'):
                 raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Job completed but USDZ URL not available"
+                    status_code=400,
+                    detail=f"Kiri Engine error: {response_data.get('msg', 'Unknown error')}"
                 )
             
-            return JobResultResponse(
-                jobId=job_id,
-                status=JobStatus.SUCCESS,
-                usdzUrl=job.usdzUrl
+            # Extract serialize and calculateType from response
+            data_obj = response_data.get('data', {})
+            serialize = data_obj.get('serialize')
+            calculate_type = data_obj.get('calculateType')
+            
+            if not serialize:
+                raise HTTPException(
+                    status_code=500,
+                    detail="No serialize ID returned from Kiri Engine"
+                )
+            
+            logger.info(f"Successfully submitted scan job. Serialize: {serialize}")
+            
+            return KiriScanResponse(
+                serialize=serialize,
+                calculateType=calculate_type or 2,  # Default to 2 for featureless
+                status="queued"
             )
-        
-        # If job failed, return error status
-        if job.status in [JobStatus.FAILED, JobStatus.EXPIRED]:
-            return JobResultResponse(
-                jobId=job_id,
-                status=job.status,
-                usdzUrl=None
-            )
-        
-        # Job is still processing, return current status
-        return JobResultResponse(
-            jobId=job_id,
-            status=job.status,
-            usdzUrl=None
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error getting job result: {e}")
+            
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error calling Kiri Engine: {e.response.status_code} - {e.response.text}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error while getting job result"
+            status_code=e.response.status_code,
+            detail=f"Kiri Engine API error: {e.response.text}"
+        )
+    except httpx.RequestError as e:
+        logger.error(f"Request error calling Kiri Engine: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to connect to Kiri Engine: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in scan_user_object: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
         )
 
-
-@router.get("/scan/{job_id}/info")
-async def get_job_info(job_id: str) -> dict:
+@router.get("/status/{serialize}", response_model=KiriStatusResponse)
+async def get_kiri_status(serialize: str):
     """
-    Get detailed information about a job (for debugging/monitoring).
+    Get current status of a Kiri Engine job.
     
-    Args:
-        job_id: Job identifier
-        
-    Returns:
-        Detailed job information
-        
-    Raises:
-        HTTPException: If job not found
+    Status codes:
+    -1: Uploading
+    0: Processing  
+    1: Failed
+    2: Successful
+    3: Queuing
+    4: Expired
     """
     try:
-        job = job_store.get_job(job_id)
-        if not job:
+        # Validate API key
+        if not KIRI_ENGINE_KEY:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Job not found"
+                status_code=500, 
+                detail="KIRI_ENGINE_KEY not configured"
             )
         
-        return {
-            "jobId": job.jobId,
-            "status": job.status,
-            "error": job.error,
-            "usdzUrl": job.usdzUrl,
-            "kiriSerialize": job.kiriSerialize,
-            "created_at": job.created_at
-        }
+        logger.info(f"Checking status for serialize: {serialize}")
         
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error getting job info: {e}")
+        async with httpx.AsyncClient() as client:
+            # Make GET request to check status
+            status_url = f"https://api.kiriengine.app/api/v1/open/model/getStatus?serialize={serialize}"
+            headers = {
+                'Authorization': f'Bearer {KIRI_ENGINE_KEY}'
+            }
+            
+            status_response = await client.get(
+                status_url,
+                headers=headers,
+                timeout=30.0
+            )
+            
+            status_response.raise_for_status()
+            response_data = status_response.json()
+            
+            logger.info(f"Status response: {response_data}")
+            
+            # Validate response
+            if not response_data.get('ok'):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Kiri Engine error: {response_data.get('msg', 'Unknown error')}"
+                )
+            
+            # Extract status from response
+            data_obj = response_data.get('data', {})
+            status = data_obj.get('status')
+            returned_serialize = data_obj.get('serialize')
+            
+            if status is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail="No status returned from Kiri Engine"
+                )
+            
+            # Map status to message
+            status_messages = {
+                -1: "Uploading",
+                0: "Processing",
+                1: "Failed",
+                2: "Successful", 
+                3: "Queuing",
+                4: "Expired"
+            }
+            
+            message = status_messages.get(status, f"Unknown status: {status}")
+            
+            logger.info(f"Status for {returned_serialize}: {message} (status: {status})")
+            
+            return KiriStatusResponse(
+                serialize=returned_serialize or serialize,
+                status=status,
+                message=message
+            )
+            
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error checking status: {e.response.status_code} - {e.response.text}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error while getting job info"
+            status_code=e.response.status_code,
+            detail=f"Kiri Engine API error: {e.response.text}"
+        )
+    except httpx.RequestError as e:
+        logger.error(f"Request error checking status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to connect to Kiri Engine: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in get_kiri_status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
         )
 
-
-@router.get("/stats")
-async def get_job_statistics() -> dict:
+@router.post("/download", response_model=KiriDownloadResponse)
+async def download_and_save_usdz(request: KiriDownloadRequest):
     """
-    Get statistics about all jobs in the system.
-    
-    Returns:
-        Job statistics
+    Download the zipped 3D model, extract USDZ, and save to Supabase.
     """
     try:
-        from ....service import get_job_statistics
-        return await get_job_statistics()
-    except Exception as e:
-        logger.error(f"Unexpected error getting job statistics: {e}")
+        # Validate API key
+        if not KIRI_ENGINE_KEY:
+            raise HTTPException(
+                status_code=500, 
+                detail="KIRI_ENGINE_KEY not configured"
+            )
+        
+        logger.info(f"Downloading model for serialize: {request.serialize}")
+        
+        async with httpx.AsyncClient() as client:
+            # Get download URL from Kiri Engine
+            download_url = f"https://api.kiriengine.app/api/v1/open/model/getModelZip?serialize={request.serialize}"
+            headers = {
+                'Authorization': f'Bearer {KIRI_ENGINE_KEY}'
+            }
+            
+            # Get the download link
+            response = await client.get(download_url, headers=headers, timeout=30.0)
+            response.raise_for_status()
+            response_data = response.json()
+            
+            logger.info(f"Download response: {response_data}")
+            
+            # Validate response
+            if not response_data.get('ok'):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Kiri Engine error: {response_data.get('msg', 'Unknown error')}"
+                )
+            
+            # Extract model URL
+            data_obj = response_data.get('data', {})
+            model_url = data_obj.get('modelUrl')
+            
+            if not model_url:
+                raise HTTPException(
+                    status_code=500,
+                    detail="No model URL returned from Kiri Engine"
+                )
+            
+            logger.info(f"Downloading model from: {model_url}")
+            
+            # Download the zipped model
+            model_response = await client.get(model_url, timeout=300.0)
+            model_response.raise_for_status()
+            zip_content = model_response.content
+            
+            # Create temporary directory for processing
+            import tempfile
+            import zipfile
+            import os
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Save zip file
+                zip_path = os.path.join(temp_dir, f"{request.serialize}.zip")
+                with open(zip_path, 'wb') as f:
+                    f.write(zip_content)
+                
+                # Extract USDZ from zip
+                usdz_file = None
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    for file_name in zip_ref.namelist():
+                        if file_name.lower().endswith('.usdz'):
+                            usdz_file = file_name
+                            zip_ref.extract(file_name, temp_dir)
+                            break
+                
+                if not usdz_file:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="No USDZ file found in the downloaded zip"
+                    )
+                
+                usdz_path = os.path.join(temp_dir, usdz_file)
+                
+                # Upload to Supabase
+                from app.utils.supabase import add_usdz_to_bucket
+                
+                # Generate filename
+                if request.postId:
+                    filename = f"{request.postId}_{request.serialize}.usdz"
+                else:
+                    filename = f"{request.serialize}.usdz"
+                
+                # Upload to user_scanned_items bucket
+                upload_result = await add_usdz_to_bucket(usdz_path, filename)
+                
+                if not upload_result["success"]:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to upload to Supabase: {upload_result['error']}"
+                    )
+                
+                usdz_url = upload_result["public_url"]
+                
+                logger.info(f"Successfully saved USDZ: {usdz_url}")
+                
+                return KiriDownloadResponse(
+                    usdzUrl=usdz_url
+                )
+            
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error downloading model: {e.response.status_code} - {e.response.text}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error while getting job statistics"
+            status_code=e.response.status_code,
+            detail=f"Kiri Engine API error: {e.response.text}"
+        )
+    except httpx.RequestError as e:
+        logger.error(f"Request error downloading model: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to connect to Kiri Engine: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in download_and_save_usdz: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
         )

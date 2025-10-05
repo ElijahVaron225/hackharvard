@@ -2,8 +2,91 @@
 import SwiftUI
 import RealityKit
 import Combine
-import CoreMotion
 import QuartzCore
+import UIKit
+
+// MARK: - Heirloom "card" builders (portable/compile-safe)
+
+/// Thin translucent box (glass plaque look)
+func makeTranslucentBox(
+    size: SIMD3<Float> = SIMD3<Float>(0.28, 0.20, 0.035),
+    alpha: Float = 0.28
+) -> ModelEntity {
+    let mesh = MeshResource.generateBox(size: size)
+
+    var glass = SimpleMaterial()
+    glass.color = .init(tint: UIColor.white.withAlphaComponent(CGFloat(alpha)), texture: nil)
+    glass.metallic = .float(0.0)
+    glass.roughness = .float(0.18)
+
+    return ModelEntity(mesh: mesh, materials: [glass])
+}
+
+/// Billboard plane that always faces camera; maps PNG (alpha respected)
+func makeCutoutBillboard(
+    image: UIImage,
+    targetWidth: Float = 0.24
+) async throws -> ModelEntity {
+    guard let cg = image.cgImage else {
+        throw NSError(domain: "Heirloom", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "PNG missing CGImage"])
+    }
+
+    // Texture creation (iOS 18 API with fallback)
+    let tex: TextureResource
+    if #available(iOS 18.0, *) {
+        tex = try await TextureResource(
+            image: cg,
+            withName: "cutout_\(UUID().uuidString)",
+            options: .init(semantic: .color)
+        )
+    } else {
+        tex = try TextureResource.generate(
+            from: cg,
+            options: .init(semantic: .color)
+        )
+    }
+
+    // Plane sized by image aspect
+    let aspect = Float(image.size.width / image.size.height)
+    let mesh  = MeshResource.generatePlane(width: targetWidth, height: targetWidth / aspect)
+
+    // Material: PBR with baseColor texture (stable across RealityKit versions)
+    var pbr = PhysicallyBasedMaterial()
+    pbr.baseColor = .init(
+        tint: UIColor.white,
+        texture: .init(tex)
+    )
+
+    let entity = ModelEntity(mesh: mesh, materials: [pbr])
+    entity.components[BillboardComponent.self] = BillboardComponent() // always face camera
+    return entity
+}
+
+/// Assembles the translucent box + pinned cutout (offset to avoid z-fighting)
+func makeHeirloomCard(image: UIImage) async throws -> Entity {
+    let box = makeTranslucentBox()
+    let cutout = try await makeCutoutBillboard(image: image, targetWidth: 0.24)
+
+    // Push the plane slightly off the box front (half depth ≈ 0.0175 + a hair)
+    cutout.position = SIMD3<Float>(0.0, 0.0, 0.019)
+
+    // Optional: soft shadow "mat" below
+    let shadowPlane = ModelEntity(mesh: .generatePlane(width: 0.18, height: 0.12))
+    var shadowMat = UnlitMaterial()
+    shadowMat.baseColor = .color(UIColor.black.withAlphaComponent(0.14))
+    shadowPlane.model?.materials = [shadowMat]
+    shadowPlane.orientation = simd_quatf(angle: -.pi/2, axis: SIMD3<Float>(1, 0, 0))
+    shadowPlane.position = SIMD3<Float>(0.0, -(0.20/2.0 + 0.005), 0.0)
+
+    let group = Entity()
+    group.addChild(box)
+    group.addChild(cutout)
+    group.addChild(shadowPlane)
+    return group
+}
+
+// MARK: - Main ARView container (non-AR 360 viewer + heirloom card)
 
 struct ARViewContainer: UIViewRepresentable {
     let experience: Experience
@@ -34,7 +117,31 @@ struct ARViewContainer: UIViewRepresentable {
         context.coordinator.loadAssets(in: arView, experience: experience)
         context.coordinator.applyFOVForCurrentOrientation()
         context.coordinator.startOrientationObservers()
-        
+
+        // ------- Heirloom card preview (floating in front of camera) -------
+        Task { @MainActor in
+            if let img = UIImage(named: "HeirloomCutout") {
+                do {
+                    let card = try await makeHeirloomCard(image: img)
+                    card.position = SIMD3<Float>(0.0, 0.0, -0.6) // ~60cm in front of camera
+
+                    // Remove old preview if present
+                    if let old = arView.scene.anchors.first(where: { $0.name == "HEIRLOOM_ANCHOR" }) {
+                        arView.scene.removeAnchor(old)
+                    }
+                    let anchor = AnchorEntity(world: .zero)
+                    anchor.name = "HEIRLOOM_ANCHOR"
+                    anchor.addChild(card)
+                    arView.scene.addAnchor(anchor)
+                } catch {
+                    print("❌ Heirloom card build failed: \(error)")
+                }
+            } else {
+                print("⚠️ Add a PNG-with-alpha named 'HeirloomCutout' to Assets.xcassets to preview the card.")
+            }
+        }
+        // -------------------------------------------------------------------
+
         return arView
     }
     
@@ -245,14 +352,12 @@ struct ARViewContainer: UIViewRepresentable {
         
         // MARK: Pinch Zoom with Snap + Haptics
         @objc func handlePinch(_ g: UIPinchGestureRecognizer) {
-            guard !isRotationLocked else { return }   // ← removed unused 'view'
-            
+            guard !isRotationLocked else { return }
             switch g.state {
             case .began:
                 isPinching = true
                 stopInertia()
                 selectionHaptics.prepare()
-                // removed: lockedLevelIndex = lockedLevelIndex (self-assignment)
                 pinchStartFOV = currentFOV()
             case .changed:
                 // scale>1 => zoom in => reduce FOV. Use sensitivity exponent.
@@ -260,7 +365,6 @@ struct ARViewContainer: UIViewRepresentable {
                 let proposed = clampFOV(pinchStartFOV / pow(scale, pinchSensitivity))
                 let snapped = snapFOVIfNeeded(target: proposed)
                 setFOV(snapped, keepLock: true)
-                // cumulative behavior from start (no g.scale reset)
             case .ended, .cancelled, .failed:
                 isPinching = false
             default:
@@ -276,35 +380,25 @@ struct ARViewContainer: UIViewRepresentable {
             isLandscapeNow() ? landscapeLevels : portraitLevels
         }
         
-        /// Snap with hysteresis: enter lock when within snapWindow of a level, but
-        /// require moving ≥ releaseDelta away to unlock.
+        /// Snap with hysteresis
         private func snapFOVIfNeeded(target: Float) -> Float {
             let levels = currentLevels()
             
             if let idx = lockedLevelIndex {
                 let lockedLevel = levels[idx]
-                // Stay locked until user moves far enough away
-                if abs(target - lockedLevel) < releaseDelta {
-                    return lockedLevel
-                } else {
-                    // Unlock and return free target (still clamped)
-                    lockedLevelIndex = nil
-                    return clampFOV(target)
-                }
+                if abs(target - lockedLevel) < releaseDelta { return lockedLevel }
+                lockedLevelIndex = nil
+                return clampFOV(target)
             } else {
-                // Not currently locked: see if we're within the snap window of any level
                 var nearestIndex = 0
                 var nearestDist  = Float.greatestFiniteMagnitude
                 for (i, level) in levels.enumerated() {
                     let d = abs(target - level)
-                    if d < nearestDist {
-                        nearestDist = d
-                        nearestIndex = i
-                    }
+                    if d < nearestDist { nearestDist = d; nearestIndex = i }
                 }
                 if nearestDist <= snapWindow {
                     lockedLevelIndex = nearestIndex
-                    selectionHaptics.selectionChanged() // haptic on lock
+                    selectionHaptics.selectionChanged()
                     selectionHaptics.prepare()
                     return levels[nearestIndex]
                 } else {
@@ -317,8 +411,8 @@ struct ARViewContainer: UIViewRepresentable {
         private func updateCamera(yaw: Float, pitch: Float) {
             guard let arView = arView,
                   let cameraAnchor = arView.scene.anchors.first(where: { $0.name == "camera" }) else { return }
-            let qYaw   = simd_quatf(angle: yaw,   axis: [0, 1, 0]) // world Y
-            let qPitch = simd_quatf(angle: pitch, axis: [1, 0, 0]) // local X
+            let qYaw   = simd_quatf(angle: yaw,   axis: SIMD3<Float>(0, 1, 0)) // world Y
+            let qPitch = simd_quatf(angle: pitch, axis: SIMD3<Float>(1, 0, 0)) // local X
             cameraAnchor.orientation = simd_normalize(qYaw * qPitch)
         }
         
@@ -329,7 +423,7 @@ struct ARViewContainer: UIViewRepresentable {
             // Runtime import: prefer USDZ for reliability in RealityKit
             if experience.modelURL.lowercased().hasSuffix(".usdz") {
                 loadModel(in: arView, url: experience.modelURL)
-            } else {
+            } else if !experience.modelURL.isEmpty {
                 print("⚠️ Model skipped - only USDZ supported (got: \(experience.modelURL))")
             }
         }
@@ -389,7 +483,7 @@ struct ARViewContainer: UIViewRepresentable {
                     mat.color = .init(tint: .white, texture: .init(texture))
                     
                     let sky = ModelEntity(mesh: mesh, materials: [mat])
-                    sky.scale = [-1, 1, 1] // invert normals
+                    sky.scale = SIMD3<Float>(-1, 1, 1) // invert normals
                     
                     let skyAnchor = AnchorEntity(world: .zero)
                     skyAnchor.name = "SKY_ANCHOR"
@@ -399,12 +493,11 @@ struct ARViewContainer: UIViewRepresentable {
             }.resume()
         }
         
-        // USDZ only
+        // USDZ only (optional)
         func loadModel(in arView: ARView, url: String) {
             guard let modelURL = URL(string: url) else { return }
             URLSession.shared.dataTask(with: modelURL) { [weak self] data, _, err in
-                guard err == nil, let data = data else { return } // ← no early self binding
-                
+                guard err == nil, let data = data else { return }
                 let ext = modelURL.pathExtension.lowercased()
                 let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".\(ext)")
                 do {
@@ -422,11 +515,11 @@ struct ARViewContainer: UIViewRepresentable {
                 do {
                     let e = try await Entity(contentsOf: fileURL) // USDZ
                     await MainActor.run {
-                        let a = AnchorEntity(world: [0, 0, -2])
+                        let a = AnchorEntity(world: SIMD3<Float>(0, 0, -2))
                         let b = e.visualBounds(relativeTo: nil)
                         let maxDim = max(b.extents.x, b.extents.y, b.extents.z)
                         let scale: Float = 0.5 / maxDim
-                        e.scale = [scale, scale, scale]
+                        e.scale = SIMD3<Float>(repeating: scale)
                         a.addChild(e)
                         arView.scene.addAnchor(a)
                     }

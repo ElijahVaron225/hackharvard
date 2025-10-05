@@ -94,57 +94,6 @@ async def download_file(url: str, file_path: str, timeout: float = 300.0) -> boo
         return False
 
 
-def extract_usdz_from_zip(zip_path: str, output_dir: str) -> Optional[str]:
-    """
-    Extract USDZ file from a ZIP archive.
-    
-    Args:
-        zip_path: Path to the ZIP file
-        output_dir: Directory to extract to
-        
-    Returns:
-        Path to the extracted USDZ file, or None if not found
-    """
-    try:
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            # List all files in the ZIP
-            file_list = zip_ref.namelist()
-            logger.info(f"Files in ZIP: {file_list}")
-            
-            # Find USDZ file
-            usdz_files = [f for f in file_list if f.lower().endswith('.usdz')]
-            
-            if not usdz_files:
-                logger.error("No USDZ file found in ZIP archive")
-                return None
-            
-            # Use the first USDZ file found
-            usdz_file = usdz_files[0]
-            logger.info(f"Found USDZ file: {usdz_file}")
-            
-            # Extract the USDZ file
-            zip_ref.extract(usdz_file, output_dir)
-            
-            # Get the full path to the extracted file
-            extracted_path = os.path.join(output_dir, usdz_file)
-            
-            # If the file was in a subdirectory, move it to the output directory
-            if os.path.dirname(usdz_file):
-                final_path = os.path.join(output_dir, os.path.basename(usdz_file))
-                shutil.move(extracted_path, final_path)
-                extracted_path = final_path
-            
-            logger.info(f"Successfully extracted USDZ file: {extracted_path}")
-            return extracted_path
-            
-    except zipfile.BadZipFile:
-        logger.error("Invalid ZIP file")
-        return None
-    except Exception as e:
-        logger.error(f"Error extracting USDZ from ZIP: {e}")
-        return None
-
-
 def cleanup_temp_files(*file_paths: str) -> None:
     """
     Clean up temporary files.
@@ -168,7 +117,7 @@ def create_temp_directory() -> str:
     Returns:
         Path to the temporary directory
     """
-    temp_dir = tempfile.mkdtemp(prefix="kiri_processing_")
+    temp_dir = tempfile.mkdtemp(prefix="temp_processing_")
     logger.debug(f"Created temp directory: {temp_dir}")
     return temp_dir
 
@@ -237,9 +186,9 @@ async def retry_with_backoff(
     raise last_exception
 
 
-def validate_video_url(url: str) -> bool:
+def validate_url(url: str) -> bool:
     """
-    Basic validation for video URLs.
+    Basic validation for URLs.
     
     Args:
         url: URL to validate
@@ -251,11 +200,4 @@ def validate_video_url(url: str) -> bool:
         return False
     
     # Check for basic URL structure
-    if not (url.startswith('http://') or url.startswith('https://')):
-        return False
-    
-    # Check for common video file extensions
-    video_extensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']
-    url_lower = url.lower()
-    
-    return any(url_lower.endswith(ext) for ext in video_extensions) or 'video' in url_lower
+    return url.startswith('http://') or url.startswith('https://')
