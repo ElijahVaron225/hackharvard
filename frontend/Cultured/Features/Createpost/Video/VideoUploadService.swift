@@ -14,7 +14,7 @@ final class VideoUploadService {
     ) {
         self.supabase = SupabaseClient(
             supabaseURL: URL(string: supabaseURL)!,
-            supabaseKey: supabaseKey,
+            supabaseKey: supabaseKey
         )
         self.bucketName = bucketName
     }

@@ -11,9 +11,9 @@ class CreatePostManager {
             let currentUser = Auth.shared.user
             print("Current user: \(currentUser?.id)")
 
-            var newPost = Post(id: "", user_id: currentUser?.id ?? "", thumbnail_url: "", user_scanned_item: "", generated_image: "", likes: 0, caption: nil, created_at: "")
+            var newPost = Post(id: "", user_id: currentUser?.id ?? "", thumbnail_url: "", user_scanned_items: "", generated_images: "", likes: 0, caption: nil, created_at: "")
 
-            let url = URL(string: "http://localhost:8000/api/v1/supabase/create-post")!
+            let url = URL(string: "https://hackharvard-u5gt.onrender.com/api/v1/supabase/create-post")!
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -24,7 +24,7 @@ class CreatePostManager {
             // Parse the JSON response
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             if let postId = json?["post_id"] as? String {
-                newPost = Post(id: postId, user_id: newPost.user_id, thumbnail_url: newPost.thumbnail_url, user_scanned_item: newPost.user_scanned_item, generated_image: newPost.generated_image, likes: 0, caption: nil, created_at: "")
+                newPost = Post(id: postId, user_id: newPost.user_id, thumbnail_url: newPost.thumbnail_url, user_scanned_items: newPost.user_scanned_items, generated_images: newPost.generated_images, likes: 0, caption: nil, created_at: "")
             }
             
             self.post = newPost

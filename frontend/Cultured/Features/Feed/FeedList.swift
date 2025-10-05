@@ -1,22 +1,62 @@
-//
-    // Project: InstagramRecreation2
-    //  File: FeedList.swift
-    //  Created by Noah Carpenter
-    //  🐱 Follow me on YouTube! 🎥
-    //  https://www.youtube.com/@NoahDoesCoding97
-    //  Like and Subscribe for coding tutorials and fun! 💻✨
-    //  Fun Fact: Cats have five toes on their front paws, but only four on their back paws! 🐾
-    //  Dream Big, Code Bigger
-    
-
 import SwiftUI
 
 struct FeedList: View {
+    @StateObject private var viewModel = FeedViewModel()
+    
     var body: some View {
-        LazyVStack(spacing:0){
-            ForEach(0..<6){ idx in
-                FeedPost(username: "user_\(idx)", location: idx % 2 == 0 ? "Cupertino, CA" : nil)
-                Divider()
+        NavigationView {
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    if viewModel.loading {
+                        ProgressView("Loading posts...")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding()
+                    } else if let errorMessage = viewModel.errorMessage {
+                        VStack(spacing: 16) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 50))
+                                .foregroundColor(.orange)
+                            Text("Failed to load posts")
+                                .font(.headline)
+                            Text(errorMessage)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                            Button("Retry") {
+                                Task {
+                                    await viewModel.refreshPosts()
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        .padding()
+                    } else if viewModel.posts.isEmpty {
+                        VStack(spacing: 16) {
+                            Image(systemName: "photo.on.rectangle")
+                                .font(.system(size: 50))
+                                .foregroundColor(.gray)
+                            Text("No posts yet")
+                                .font(.headline)
+                            Text("Be the first to share a cultural artifact!")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding()
+                    } else {
+                        ForEach(viewModel.posts) { post in
+                            FeedPost(post: post)
+                            Divider()
+                        }
+                    }
+                }
+            }
+            .refreshable {
+                await viewModel.refreshPosts()
+            }
+            .navigationTitle("Feed")
+            .task {
+                await viewModel.loadPosts()
             }
         }
     }

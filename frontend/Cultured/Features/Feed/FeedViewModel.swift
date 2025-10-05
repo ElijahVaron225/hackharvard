@@ -1,40 +1,41 @@
 import Foundation
 import Combine 
 
-struct FeedItem: Identifiable, Decodable {
-    let id: String
-    let username: String
-    let imageUrl: URL
-    let location: String?
-    let aspectRatio: Double?
-}
-
 @MainActor
 final class FeedViewModel: ObservableObject {
-    @Published var items: [FeedItem] = []
+    @Published var posts: [Post] = []
     @Published var loading = false
     @Published var errorMessage: String?
 
-    // TODO: replace with your real endpoint
-    private let feedURL = URL(string: "https://api/v1/")!
+    // Replace with your actual backend URL
+    private let baseURL = "https://hackharvard-u5gt.onrender.com" // Update this to your actual backend URL
+    private var feedURL: URL {
+        URL(string: "\(baseURL)/api/v1/supabase/get-posts")!
+    }
 
-    func load() async {
+    func loadPosts() async {
         guard !loading else { return }
         loading = true
         errorMessage = nil
         defer { loading = false }
 
         do {
-            let (data, resp) = try await URLSession.shared.data(from: feedURL)
-            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            guard (200..<300).contains(code) else {
-                throw NSError(domain: "HTTP \(code)", code: code)
+            let (data, response) = try await URLSession.shared.data(from: feedURL)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            
+            guard (200..<300).contains(statusCode) else {
+                throw NSError(domain: "HTTP \(statusCode)", code: statusCode)
             }
-            let decoded = try JSONDecoder().decode([FeedItem].self, from: data) // or FeedResponse if your API wraps it
-            items = decoded
+            
+            let decoded = try JSONDecoder().decode([Post].self, from: data)
+            posts = decoded
         } catch {
-            errorMessage = "Failed to load feed"
+            errorMessage = "Failed to load posts: \(error.localizedDescription)"
             print("Feed error:", error)
         }
+    }
+    
+    func refreshPosts() async {
+        await loadPosts()
     }
 }

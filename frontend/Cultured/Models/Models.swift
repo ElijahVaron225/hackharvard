@@ -12,9 +12,9 @@ struct Experience: Identifiable, Codable {
 struct Post: Identifiable, Codable {
     let id: String
     let user_id: String
-    let thumbnail_url: String
-    let user_scanned_item: String
-    let generated_image: String
+    let thumbnail_url: String?
+    let user_scanned_items: String?
+    let generated_images: String?
     let likes: Int
     let caption: String?
     let created_at: String
