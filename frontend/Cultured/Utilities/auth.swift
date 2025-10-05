@@ -46,7 +46,7 @@ struct User: Codable {
 class Auth {
     static let shared = Auth()
     private let supabase: SupabaseClient
-    private var user: User?
+    public var user: User?
 
     init(
         supabaseURL: String = "https://ygrolpbmsuhcslizztvy.supabase.co",

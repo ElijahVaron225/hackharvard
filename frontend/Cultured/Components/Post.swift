@@ -11,25 +11,13 @@
 import SwiftUI
 import Foundation
 
-struct Post: Identifiable {
-    let id = UUID()
-    let username: String
-    let location: String?
-    let imageName: String?   // replace with real asset names later
-    let likeCount: Int
-    let caption: String
-}
 
-let demoPosts: [Post] = [
-    .init(username: "Noah", location: "The Moon", imageName: nil, likeCount: 123, caption: "Ship it 🚀"),
-    .init(username: "swiftdev", location: nil, imageName: nil, likeCount: 42, caption: "Stacks on stacks")
-]
 
 struct FeedListWithData: View {
     var body: some View {
         LazyVStack(spacing: 0) {
-            ForEach(demoPosts) { post in
-                FeedPost(username: post.username, location: post.location)
+            ForEach(demoPosts) { postq in
+                FeedPost(username: post.username)
                 Divider()
             }
         }

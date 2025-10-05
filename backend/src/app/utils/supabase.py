@@ -3,6 +3,7 @@ import time
 import uuid
 import httpx
 from app.core.config import settings
+from app.models import Post
 from supabase import create_client, Client
 from typing import List, Dict, Any
 

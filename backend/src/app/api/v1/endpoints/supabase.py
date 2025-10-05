@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.utils.supabase import list_buckets, add_url_to_generated_images_bucket, add_url_to_thumbnails_bucket, get_generated_image_url, list_generated_images, list_thumbnails, create_post_empty, get_posts
 from app.core.config import settings
+from app.models import Post
 
 router = APIRouter()
 
