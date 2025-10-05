@@ -284,7 +284,7 @@ struct ARViewContainer: UIViewRepresentable {
         func startDeviceMotion() {
             guard isDeviceMotionEnabled, motionManager.isDeviceMotionAvailable, !motionManager.isDeviceMotionActive else { return }
             
-            motionManager.startDeviceMotionUpdates(using: .xArbitraryCorrectedZVertical) { [weak self] motion, error in
+            motionManager.startDeviceMotionUpdates(using: .xArbitraryCorrectedZVertical, to: .main) { [weak self] motion, error in
                 guard let self = self, let motion = motion else { return }
                 
                 DispatchQueue.main.async {
