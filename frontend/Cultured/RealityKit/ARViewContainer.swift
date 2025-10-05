@@ -17,8 +17,30 @@ func makeTranslucentBox(
 
     var glass = SimpleMaterial()
     glass.color = .init(tint: UIColor.white.withAlphaComponent(CGFloat(alpha)), texture: nil)
-    glass.metallic = .float(0.0)
-    glass.roughness = .float(0.18)
+    glass.metallic = 0.0
+    glass.roughness = 0.18
+
+    return ModelEntity(mesh: mesh, materials: [glass])
+}
+
+/// Rounded translucent box with curved corners for billboard-style card
+func makeRoundedTranslucentBox(
+    size: SIMD3<Float> = SIMD3<Float>(0.32, 0.24, 0.04),
+    alpha: Float = 0.25,
+    cornerRadius: Float = 0.08
+) -> ModelEntity {
+    // Create a rounded box mesh
+    let mesh = MeshResource.generateBox(
+        size: size,
+        cornerRadius: cornerRadius
+    )
+
+    var glass = PhysicallyBasedMaterial()
+    glass.baseColor = .init(tint: UIColor.white.withAlphaComponent(CGFloat(alpha)), texture: nil)
+    glass.metallic = 0.0
+    glass.roughness = 0.15
+    glass.faceCulling = .none
+    glass.blending = .transparent(opacity: .init(scale: alpha))
 
     return ModelEntity(mesh: mesh, materials: [glass])
 }
@@ -58,6 +80,8 @@ func makeCutoutBillboard(
         tint: UIColor.white,
         texture: .init(tex)
     )
+    pbr.faceCulling = .none
+    pbr.blending = .transparent(opacity: .init(scale: 1.0, texture: .init(tex)))
 
     let entity = ModelEntity(mesh: mesh, materials: [pbr])
     entity.components[BillboardComponent.self] = BillboardComponent() // always face camera
@@ -86,6 +110,306 @@ func makeHeirloomCard(image: UIImage) async throws -> Entity {
     group.addChild(shadowPlane)
     return group
 }
+
+/// Creates a curved plaque with image projected onto its surface
+func makeBillboardCard(image: UIImage) async throws -> Entity {
+    // Calculate image aspect ratio to scale the plaque appropriately
+    let imageAspect = Float(image.size.width / image.size.height)
+    let baseWidth: Float = 0.28
+    let baseHeight = baseWidth / imageAspect
+    
+    // Scale the plaque to fit the image dimensions
+    let plaqueSize = SIMD3<Float>(baseWidth, baseHeight, 0.04)
+    let cornerRadius = min(baseWidth, baseHeight) * 0.25 // Proportional corner radius
+    
+    // Create the interactive button-style plaque
+    let interactiveButton = try await makeInteractiveButtonPlaque(
+        image: image,
+        size: plaqueSize,
+        cornerRadius: cornerRadius
+    )
+    
+    // Add a subtle border frame
+    let borderFrame = makeRoundedTranslucentBox(
+        size: SIMD3<Float>(baseWidth + 0.06, baseHeight + 0.06, 0.01),
+        alpha: 0.15,
+        cornerRadius: cornerRadius + 0.01
+    )
+    borderFrame.position = SIMD3<Float>(0.0, 0.0, 0.005)
+    
+    // Add a soft shadow below
+    let shadowPlane = ModelEntity(mesh: .generatePlane(width: baseWidth + 0.04, height: baseHeight + 0.04))
+    var shadowMat = UnlitMaterial()
+    shadowMat.baseColor = .color(UIColor.black.withAlphaComponent(0.12))
+    shadowPlane.model?.materials = [shadowMat]
+    shadowPlane.orientation = simd_quatf(angle: -.pi/2, axis: SIMD3<Float>(1, 0, 0))
+    shadowPlane.position = SIMD3<Float>(0.0, -(baseHeight/2.0 + 0.008), 0.0)
+    
+    let group = Entity()
+    group.addChild(interactiveButton)
+    group.addChild(borderFrame)
+    group.addChild(shadowPlane)
+    
+    return group
+}
+
+/// Preprocesses image to ensure clean transparent background
+func preprocessImageForTransparency(_ image: UIImage) -> UIImage? {
+    guard let cgImage = image.cgImage else { return nil }
+    
+    let width = cgImage.width
+    let height = cgImage.height
+    let bytesPerPixel = 4
+    let bytesPerRow = bytesPerPixel * width
+    let bitsPerComponent = 8
+    
+    var pixelData = [UInt8](repeating: 0, count: width * height * bytesPerPixel)
+    
+    guard let context = CGContext(
+        data: &pixelData,
+        width: width,
+        height: height,
+        bitsPerComponent: bitsPerComponent,
+        bytesPerRow: bytesPerRow,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else { return nil }
+    
+    context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+    
+    // Process pixels to clean up semi-transparent background
+    for i in stride(from: 0, to: pixelData.count, by: bytesPerPixel) {
+        let alpha = pixelData[i + 3] // Alpha channel
+        
+        // If alpha is very low (semi-transparent), make it fully transparent
+        if alpha < 30 {
+            pixelData[i + 3] = 0 // Set alpha to 0 (fully transparent)
+        }
+        // If alpha is high enough, make it fully opaque
+        else if alpha > 50 {
+            pixelData[i + 3] = 255 // Set alpha to 255 (fully opaque)
+        }
+    }
+    
+    guard let processedCGImage = context.makeImage() else { return nil }
+    return UIImage(cgImage: processedCGImage)
+}
+
+/// Creates a curved plaque with image texture projected onto its surface
+func makeCurvedPlaqueWithImage(
+    image: UIImage,
+    size: SIMD3<Float>,
+    cornerRadius: Float
+) async throws -> ModelEntity {
+    guard let cg = image.cgImage else {
+        throw NSError(domain: "Heirloom", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "PNG missing CGImage"])
+    }
+
+    // Create texture from original image (no preprocessing)
+    let tex: TextureResource
+    if #available(iOS 18.0, *) {
+        tex = try await TextureResource(
+            image: cg,
+            withName: "plaque_\(UUID().uuidString)",
+            options: .init(semantic: .color)
+        )
+    } else {
+        tex = try TextureResource.generate(
+            from: cg,
+            options: .init(semantic: .color)
+        )
+    }
+
+    // Create rounded box mesh
+    let mesh = MeshResource.generateBox(
+        size: size,
+        cornerRadius: cornerRadius
+    )
+
+    // Create material with image texture projected onto the curved surface
+    var plaqueMaterial = PhysicallyBasedMaterial()
+    plaqueMaterial.baseColor = .init(
+        tint: UIColor.white,
+        texture: .init(tex)
+    )
+    plaqueMaterial.metallic = 0.0
+    plaqueMaterial.roughness = 0.1
+    plaqueMaterial.faceCulling = .none
+    // Use opaque blending for solid images (JPG) or transparent for PNG with alpha
+    plaqueMaterial.blending = .opaque
+
+    return ModelEntity(mesh: mesh, materials: [plaqueMaterial])
+}
+
+/// Creates a modern interactive button-style plaque with gradient and shadow effects
+func makeInteractiveButtonPlaque(
+    image: UIImage,
+    size: SIMD3<Float>,
+    cornerRadius: Float
+) async throws -> Entity {
+    guard let cg = image.cgImage else {
+        throw NSError(domain: "Heirloom", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "PNG missing CGImage"])
+    }
+
+    // Create texture from image
+    let tex: TextureResource
+    if #available(iOS 18.0, *) {
+        tex = try await TextureResource(
+            image: cg,
+            withName: "button_\(UUID().uuidString)",
+            options: .init(semantic: .color)
+        )
+    } else {
+        tex = try TextureResource.generate(
+            from: cg,
+            options: .init(semantic: .color)
+        )
+    }
+
+    // Create the main button surface with gradient effect
+    let buttonMesh = MeshResource.generateBox(
+        size: size,
+        cornerRadius: cornerRadius
+    )
+
+    // Create a subtle gradient material for the button
+    var buttonMaterial = PhysicallyBasedMaterial()
+    buttonMaterial.baseColor = .init(
+        tint: UIColor.white,
+        texture: .init(tex)
+    )
+    buttonMaterial.metallic = 0.1
+    buttonMaterial.roughness = 0.2
+    buttonMaterial.faceCulling = .none
+    buttonMaterial.blending = .opaque
+
+    let buttonEntity = ModelEntity(mesh: buttonMesh, materials: [buttonMaterial])
+
+    // Add a subtle inner shadow/depth effect
+    let innerShadowMesh = MeshResource.generateBox(
+        size: SIMD3<Float>(size.x * 0.95, size.y * 0.95, size.z * 0.5),
+        cornerRadius: cornerRadius * 0.9
+    )
+    
+    var shadowMaterial = PhysicallyBasedMaterial()
+    shadowMaterial.baseColor = .init(tint: UIColor.black.withAlphaComponent(0.1))
+    shadowMaterial.metallic = 0.0
+    shadowMaterial.roughness = 0.8
+    shadowMaterial.faceCulling = .none
+    shadowMaterial.blending = .transparent(opacity: .init(scale: 0.1))
+    
+    let innerShadow = ModelEntity(mesh: innerShadowMesh, materials: [shadowMaterial])
+    innerShadow.position = SIMD3<Float>(0.0, 0.0, -0.01)
+
+    // Add a subtle highlight/gloss effect
+    let highlightMesh = MeshResource.generateBox(
+        size: SIMD3<Float>(size.x * 0.8, size.y * 0.3, size.z * 0.02),
+        cornerRadius: cornerRadius * 0.8
+    )
+    
+    var highlightMaterial = PhysicallyBasedMaterial()
+    highlightMaterial.baseColor = .init(tint: UIColor.white.withAlphaComponent(0.3))
+    highlightMaterial.metallic = 0.8
+    highlightMaterial.roughness = 0.1
+    highlightMaterial.faceCulling = .none
+    highlightMaterial.blending = .transparent(opacity: .init(scale: 0.3))
+    
+    let highlight = ModelEntity(mesh: highlightMesh, materials: [highlightMaterial])
+    highlight.position = SIMD3<Float>(0.0, size.y * 0.25, size.z * 0.49)
+
+    // Create audio icon in bottom right corner
+    let audioIconSize: Float = min(size.x, size.y) * 0.15
+    let audioIconMesh = MeshResource.generateBox(
+        size: SIMD3<Float>(audioIconSize, audioIconSize * 0.6, size.z * 0.02),
+        cornerRadius: audioIconSize * 0.1
+    )
+    
+    var audioIconMaterial = PhysicallyBasedMaterial()
+    audioIconMaterial.baseColor = .init(tint: UIColor.systemBlue)
+    audioIconMaterial.metallic = 0.3
+    audioIconMaterial.roughness = 0.2
+    audioIconMaterial.faceCulling = .none
+    audioIconMaterial.blending = .opaque
+    
+    let audioIcon = ModelEntity(mesh: audioIconMesh, materials: [audioIconMaterial])
+    audioIcon.position = SIMD3<Float>(
+        size.x * 0.35,  // Right side
+        -size.y * 0.35, // Bottom
+        size.z * 0.51   // Slightly in front
+    )
+
+    // Create the complete button group
+    let buttonGroup = Entity()
+    buttonGroup.addChild(buttonEntity)
+    buttonGroup.addChild(innerShadow)
+    buttonGroup.addChild(highlight)
+    buttonGroup.addChild(audioIcon)
+
+    // Add a subtle pulsing animation to indicate interactivity
+    let pulseAnimation = FromToByAnimation<Transform>(
+        name: "pulse",
+        from: Transform(scale: SIMD3<Float>(1.0, 1.0, 1.0)),
+        to: Transform(scale: SIMD3<Float>(1.02, 1.02, 1.02)),
+        duration: 2.0,
+        timing: .easeInOut,
+        repeatMode: .repeat
+    )
+    
+    let animationResource = try AnimationResource.generate(with: pulseAnimation)
+    buttonGroup.playAnimation(animationResource)
+
+    return buttonGroup
+}
+
+/// Alternative approach: Creates a plaque with a solid background and image overlay
+func makeBillboardCardWithSolidBackground(image: UIImage) async throws -> Entity {
+    // Calculate image aspect ratio to scale the plaque appropriately
+    let imageAspect = Float(image.size.width / image.size.height)
+    let baseWidth: Float = 0.28
+    let baseHeight = baseWidth / imageAspect
+    
+    // Scale the plaque to fit the image dimensions
+    let plaqueSize = SIMD3<Float>(baseWidth, baseHeight, 0.04)
+    let cornerRadius = min(baseWidth, baseHeight) * 0.25 // Proportional corner radius
+    
+    // Create solid white background
+    let solidBackground = makeRoundedTranslucentBox(
+        size: plaqueSize,
+        alpha: 1.0, // Fully opaque white background
+        cornerRadius: cornerRadius
+    )
+    
+    // Create image as a separate plane on top
+    let imagePlane = try await makeCutoutBillboard(image: image, targetWidth: baseWidth * 0.9)
+    imagePlane.position = SIMD3<Float>(0.0, 0.0, 0.021) // Slightly in front
+    
+    // Add border frame
+    let borderFrame = makeRoundedTranslucentBox(
+        size: SIMD3<Float>(baseWidth + 0.06, baseHeight + 0.06, 0.01),
+        alpha: 0.15,
+        cornerRadius: cornerRadius + 0.01
+    )
+    borderFrame.position = SIMD3<Float>(0.0, 0.0, 0.005)
+    
+    // Add shadow
+    let shadowPlane = ModelEntity(mesh: .generatePlane(width: baseWidth + 0.04, height: baseHeight + 0.04))
+    var shadowMat = UnlitMaterial()
+    shadowMat.baseColor = .color(UIColor.black.withAlphaComponent(0.12))
+    shadowPlane.model?.materials = [shadowMat]
+    shadowPlane.orientation = simd_quatf(angle: -.pi/2, axis: SIMD3<Float>(1, 0, 0))
+    shadowPlane.position = SIMD3<Float>(0.0, -(baseHeight/2.0 + 0.008), 0.0)
+    
+    let group = Entity()
+    group.addChild(solidBackground)
+    group.addChild(imagePlane)
+    group.addChild(borderFrame)
+    group.addChild(shadowPlane)
+    
+    return group
+}
+
 
 // MARK: - Main ARView container (non-AR 360 viewer + heirloom card)
 
@@ -120,26 +444,45 @@ struct ARViewContainer: UIViewRepresentable {
         context.coordinator.startOrientationObservers()
         context.coordinator.startDeviceMotion()
 
-        // ------- Heirloom card preview (floating in front of camera) -------
+        // ------- Billboard card preview (floating in front of camera) -------
         Task { @MainActor in
-            if let img = UIImage(named: "HeirloomCutout") {
+            // Try different image formats to avoid alpha channel issues
+            var img: UIImage?
+            
+            // First try JPG (white background, no alpha channel issues)
+            if let jpgImg = UIImage(named: "testImage.jpg") {
+                img = jpgImg
+                print("✅ Using JPG image with white background")
+            }
+            // Fallback to solid background PNG
+            else if let solidImg = UIImage(named: "testImage_solid") {
+                img = solidImg
+                print("✅ Using solid background PNG image")
+            }
+            // Fallback to original PNG
+            else if let pngImg = UIImage(named: "testImage") {
+                img = pngImg
+                print("✅ Using original PNG image")
+            }
+            
+            if let image = img {
                 do {
-                    let card = try await makeHeirloomCard(image: img)
-                    card.position = SIMD3<Float>(0.0, 0.0, -0.6) // ~60cm in front of camera
+                    let card = try await makeBillboardCard(image: image)
+                    card.position = SIMD3<Float>(0.0, 0.0, -0.8) // ~80cm in front of camera
 
                     // Remove old preview if present
-                    if let old = arView.scene.anchors.first(where: { $0.name == "HEIRLOOM_ANCHOR" }) {
+                    if let old = arView.scene.anchors.first(where: { $0.name == "BILLBOARD_ANCHOR" }) {
                         arView.scene.removeAnchor(old)
                     }
                     let anchor = AnchorEntity(world: .zero)
-                    anchor.name = "HEIRLOOM_ANCHOR"
+                    anchor.name = "BILLBOARD_ANCHOR"
                     anchor.addChild(card)
                     arView.scene.addAnchor(anchor)
                 } catch {
-                    print("❌ Heirloom card build failed: \(error)")
+                    print("❌ Billboard card build failed: \(error)")
                 }
             } else {
-                print("⚠️ Add a PNG-with-alpha named 'HeirloomCutout' to Assets.xcassets to preview the card.")
+                print("⚠️ No test image found. Add 'testImage' to Assets.xcassets.")
             }
         }
         // -------------------------------------------------------------------
