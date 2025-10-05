@@ -1,5 +1,4 @@
 import SwiftUI
-import Auth
 
 @main
 struct CulturedApp: App {

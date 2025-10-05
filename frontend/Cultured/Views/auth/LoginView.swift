@@ -1,5 +1,4 @@
 import SwiftUI
-import Auth
 
 struct LoginView: View {
     @State private var email = ""
@@ -54,11 +53,14 @@ struct LoginView: View {
 
     @MainActor
     private func signInAndMaybeNavigate() async {
+        print("🚀 Login button tapped - starting sign in process")
         do {
             try await Auth.shared.signIn(email: email, password: password)
+            print("✅ Sign in successful, navigating to content")
             // Signed in successfully -> go to content
             goToContext = true
         } catch {
+            print("❌ Sign in failed with error: \(error)")
             // If the error is only about email confirmation, still navigate.
             // (Adjust this check to match your Auth error type/message.)
             let msg = error.localizedDescription
